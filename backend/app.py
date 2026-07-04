@@ -5,6 +5,10 @@ This file creates and configures the Flask app.
 Run this file to start the backend server:
 
     python app.py
+
+When the app starts:
+1. All database tables are created automatically (db.create_all)
+2. A default admin user is created if one does not already exist
 """
 
 from flask import Flask, jsonify
@@ -32,10 +36,54 @@ def create_app():
     cors.init_app(app)     # Enable CORS for all routes
     jwt.init_app(app)      # Enable JWT support
 
-    # Step 4: Register routes
+    # Step 4: Create database tables and default admin user
+    with app.app_context():
+        # Import models so SQLAlchemy registers all table definitions
+        import models  # noqa: F401
+
+        # Create all tables in SQLite if they do not exist yet
+        db.create_all()
+
+        # Create the default admin account on first run
+        create_default_admin()
+
+    # Step 5: Register routes
     register_routes(app)
 
     return app
+
+
+def create_default_admin():
+    """
+    Automatic Admin Creation
+
+    How it works:
+    1. We search the database for a user with username "admin"
+    2. If found -> print "Admin already exists" (do nothing)
+    3. If not found -> create a new User with role "admin" and print success message
+
+    This runs every time app.py starts, but the admin is only inserted once.
+    """
+    from models import User
+
+    existing_admin = User.query.filter_by(username="admin").first()
+
+    if existing_admin:
+        print("Admin already exists")
+        return
+
+    # Create the default admin user
+    admin_user = User(
+        username="admin",
+        email="admin@placementportal.com",
+        password="admin123",
+        role="admin",
+        is_active=True,
+    )
+
+    db.session.add(admin_user)
+    db.session.commit()
+    print("Admin created successfully")
 
 
 def register_routes(app):
@@ -48,6 +96,33 @@ def register_routes(app):
         Visit http://localhost:5000/ in a browser or use curl.
         """
         return jsonify({"message": "Placement Portal Backend Running"})
+
+    @app.route("/tables", methods=["GET"])
+    def table_counts():
+        """
+        Return the total number of rows in each database table.
+        Useful to verify that models and tables were created correctly.
+        """
+        from models import User, Student, Company, PlacementDrive, Application
+
+        return jsonify({
+            "users": User.query.count(),
+            "students": Student.query.count(),
+            "companies": Company.query.count(),
+            "placement_drives": PlacementDrive.query.count(),
+            "applications": Application.query.count(),
+        })
+
+    @app.route("/admin-check", methods=["GET"])
+    def admin_check():
+        """
+        Check whether the default admin user exists in the database.
+        """
+        from models import User
+
+        admin_exists = User.query.filter_by(username="admin").first() is not None
+
+        return jsonify({"admin_exists": admin_exists})
 
 
 # Create the app instance
