@@ -3,6 +3,10 @@
  *
  * This file handles all HTTP requests to the Flask backend.
  * We use Axios to send GET, POST, PUT, DELETE requests.
+ *
+ * Authentication:
+ * - After login, JWT token is stored in localStorage
+ * - Axios automatically attaches the token to every request
  */
 
 import axios from "axios";
@@ -19,12 +23,69 @@ const apiClient = axios.create({
 });
 
 /**
- * Check if the backend is running.
- * Calls GET / on the Flask server.
- *
- * @returns {Promise} Response data with { message: "..." }
+ * Attach JWT token to every API request (if user is logged in).
+ * Header format: Authorization: Bearer <token>
  */
+apiClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem("token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// ---------- Auth helper functions ----------
+
+export function saveAuthData(token, role, username) {
+  localStorage.setItem("token", token);
+  localStorage.setItem("role", role);
+  localStorage.setItem("username", username);
+}
+
+export function clearAuthData() {
+  localStorage.removeItem("token");
+  localStorage.removeItem("role");
+  localStorage.removeItem("username");
+}
+
+export function isLoggedIn() {
+  return !!localStorage.getItem("token");
+}
+
+export function getRole() {
+  return localStorage.getItem("role");
+}
+
+// ---------- API calls ----------
+
 export async function checkBackendStatus() {
   const response = await apiClient.get("/");
   return response.data;
 }
+
+export async function registerStudent(studentData) {
+  const response = await apiClient.post("/register/student", studentData);
+  return response.data;
+}
+
+export async function registerCompany(companyData) {
+  const response = await apiClient.post("/register/company", companyData);
+  return response.data;
+}
+
+export async function login(email, password) {
+  const response = await apiClient.post("/login", { email, password });
+  return response.data;
+}
+
+export async function logout() {
+  const response = await apiClient.post("/logout");
+  return response.data;
+}
+
+export async function getCurrentUser() {
+  const response = await apiClient.get("/me");
+  return response.data;
+}
+
+export default apiClient;

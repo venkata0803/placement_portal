@@ -47,7 +47,14 @@ def create_app():
         # Create the default admin account on first run
         create_default_admin()
 
-    # Step 5: Register routes
+    # Step 5: Register blueprints (grouped API routes)
+    from routes.auth import auth_bp
+    from routes.test_routes import test_bp
+
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(test_bp)
+
+    # Step 6: Register basic test routes
     register_routes(app)
 
     return app
@@ -69,17 +76,21 @@ def create_default_admin():
     existing_admin = User.query.filter_by(username="admin").first()
 
     if existing_admin:
+        # Fix old databases where admin password was stored as plain text
+        if existing_admin.password == "admin123":
+            existing_admin.set_password("admin123")
+            db.session.commit()
         print("Admin already exists")
         return
 
-    # Create the default admin user
+    # Create the default admin user with a hashed password
     admin_user = User(
         username="admin",
         email="admin@placementportal.com",
-        password="admin123",
         role="admin",
         is_active=True,
     )
+    admin_user.set_password("admin123")
 
     db.session.add(admin_user)
     db.session.commit()

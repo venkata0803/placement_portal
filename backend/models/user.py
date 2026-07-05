@@ -9,6 +9,8 @@ Admin, students, and company HR users all share this same table.
 
 from datetime import datetime
 
+from werkzeug.security import check_password_hash, generate_password_hash
+
 from extensions import db
 
 
@@ -46,6 +48,20 @@ class User(db.Model):
         backref="user",
         uselist=False,
     )
+
+    def set_password(self, plain_password):
+        """
+        Hash the password before saving to the database.
+        Never store plain text passwords.
+        """
+        self.password = generate_password_hash(plain_password)
+
+    def check_password(self, plain_password):
+        """
+        Compare a plain text password with the stored hash.
+        Returns True if they match, False otherwise.
+        """
+        return check_password_hash(self.password, plain_password)
 
     def __repr__(self):
         return f"<User {self.username} ({self.role})>"
