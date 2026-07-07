@@ -93,6 +93,11 @@ export async function getAdminDashboard() {
   return response.data;
 }
 
+export async function getCompanyDashboard() {
+  const response = await apiClient.get("/company/dashboard");
+  return response.data;
+}
+
 // ---------- Admin approval APIs (Stage 4.2) ----------
 
 export async function fetchCompanies() {

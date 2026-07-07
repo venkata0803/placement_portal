@@ -51,10 +51,12 @@ def create_app():
     from routes.auth import auth_bp
     from routes.test_routes import test_bp
     from routes.admin import admin_bp
+    from routes.company import company_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(test_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(company_bp)
 
     # Step 6: Register basic test routes
     register_routes(app)

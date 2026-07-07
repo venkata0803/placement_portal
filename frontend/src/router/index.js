@@ -66,6 +66,7 @@ const routes = [
     path: "/company",
     name: "CompanyDashboard",
     component: CompanyDashboard,
+    meta: { requiresCompany: true },
   },
 ];
 
@@ -76,7 +77,7 @@ const router = createRouter({
   routes,
 });
 
-// Protect admin dashboard: only logged-in admin users can access /admin
+// Protect role-specific routes: redirect to Login if not allowed
 router.beforeEach((to, from, next) => {
   if (to.meta.requiresAdmin) {
     if (!isLoggedIn() || getRole() !== "admin") {
@@ -84,6 +85,14 @@ router.beforeEach((to, from, next) => {
       return;
     }
   }
+
+  if (to.meta.requiresCompany) {
+    if (!isLoggedIn() || getRole() !== "company") {
+      next({ name: "Login" });
+      return;
+    }
+  }
+
   next();
 });
 
