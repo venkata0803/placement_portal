@@ -6,6 +6,7 @@
  */
 
 import { createRouter, createWebHistory } from "vue-router";
+import { getRole, isLoggedIn } from "../services/api.js";
 import Home from "../views/Home.vue";
 import Login from "../views/Login.vue";
 import StudentRegister from "../views/StudentRegister.vue";
@@ -40,6 +41,7 @@ const routes = [
     path: "/admin",
     name: "AdminDashboard",
     component: AdminDashboard,
+    meta: { requiresAdmin: true },
   },
   {
     path: "/student",
@@ -58,6 +60,17 @@ const router = createRouter({
   // Use HTML5 history mode (clean URLs without #)
   history: createWebHistory(),
   routes,
+});
+
+// Protect admin dashboard: only logged-in admin users can access /admin
+router.beforeEach((to, from, next) => {
+  if (to.meta.requiresAdmin) {
+    if (!isLoggedIn() || getRole() !== "admin") {
+      next({ name: "Login" });
+      return;
+    }
+  }
+  next();
 });
 
 export default router;

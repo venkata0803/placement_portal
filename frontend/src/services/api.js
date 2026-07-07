@@ -88,4 +88,9 @@ export async function getCurrentUser() {
   return response.data;
 }
 
+export async function getAdminDashboard() {
+  const response = await apiClient.get("/admin/dashboard");
+  return response.data;
+}
+
 export default apiClient;
