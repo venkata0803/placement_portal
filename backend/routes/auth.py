@@ -234,6 +234,17 @@ def login():
     if not user.is_active:
         return jsonify({"message": "Account is disabled"}), 403
 
+    # Step 4b: Company users must be approved before they can access the dashboard
+    if user.role == "company":
+        company = Company.query.filter_by(user_id=user.id).first()
+        if company:
+            if company.approval_status == "Rejected":
+                return jsonify({"message": "Company registration rejected."}), 403
+            if company.approval_status != "Approved":
+                return jsonify({
+                    "message": "Your company is waiting for admin approval."
+                }), 403
+
     # Step 5: Create JWT token with user id and role inside it
     access_token = create_access_token(
         identity=str(user.id),

@@ -83,7 +83,13 @@ export default {
         <h6 class="text-muted text-uppercase small mb-3">Menu</h6>
         <ul class="nav flex-column">
           <li class="nav-item">
-            <span class="nav-link active fw-semibold">Dashboard</span>
+            <router-link class="nav-link active" to="/admin">Dashboard</router-link>
+          </li>
+          <li class="nav-item">
+            <router-link class="nav-link" to="/admin/companies">Companies</router-link>
+          </li>
+          <li class="nav-item">
+            <router-link class="nav-link" to="/admin/drives">Placement Drives</router-link>
           </li>
         </ul>
       </aside>

@@ -8,6 +8,7 @@ Uses @admin_required decorator for JWT role validation.
 from flask import Blueprint, jsonify
 
 from decorators import admin_required
+from extensions import db
 from models import Application, Company, PlacementDrive, Student, User
 
 admin_bp = Blueprint("admin", __name__)
@@ -91,3 +92,123 @@ def get_dashboard():
         "recent_students": _get_recent_students(),
         "recent_companies": _get_recent_companies(),
     }), 200
+
+
+def _format_company_row(company):
+    """Build one company entry for the admin companies list."""
+    return {
+        "id": company.id,
+        "company_name": company.company_name,
+        "email": company.user.email,
+        "website": company.website or "",
+        "approval_status": company.approval_status,
+        "created_at": company.user.created_at.isoformat()
+        if company.user.created_at
+        else None,
+    }
+
+
+def _format_drive_row(drive):
+    """Build one placement drive entry for the admin drives list."""
+    return {
+        "id": drive.id,
+        "drive_title": drive.job_title,
+        "company": drive.company.company_name,
+        "status": drive.status,
+        "deadline": drive.application_deadline.isoformat()
+        if drive.application_deadline
+        else None,
+        "created_at": drive.created_at.isoformat() if drive.created_at else None,
+    }
+
+
+@admin_bp.route("/admin/companies", methods=["GET"])
+@admin_required
+def get_all_companies():
+    """
+    Return all companies for admin review.
+
+    Fields: id, company_name, email, website, approval_status, created_at.
+    Only accessible by admin users.
+    """
+    companies = (
+        Company.query.join(User)
+        .order_by(User.created_at.desc())
+        .all()
+    )
+
+    return jsonify([_format_company_row(company) for company in companies]), 200
+
+
+@admin_bp.route("/admin/company/<int:company_id>/approve", methods=["PUT"])
+@admin_required
+def approve_company(company_id):
+    """Set company approval_status to Approved."""
+    company = Company.query.get(company_id)
+    if not company:
+        return jsonify({"message": "Company not found"}), 404
+
+    company.approval_status = "Approved"
+    db.session.commit()
+
+    return jsonify({"message": "Company approved successfully"}), 200
+
+
+@admin_bp.route("/admin/company/<int:company_id>/reject", methods=["PUT"])
+@admin_required
+def reject_company(company_id):
+    """Set company approval_status to Rejected."""
+    company = Company.query.get(company_id)
+    if not company:
+        return jsonify({"message": "Company not found"}), 404
+
+    company.approval_status = "Rejected"
+    db.session.commit()
+
+    return jsonify({"message": "Company rejected successfully"}), 200
+
+
+@admin_bp.route("/admin/drives", methods=["GET"])
+@admin_required
+def get_all_drives():
+    """
+    Return all placement drives for admin review.
+
+    Fields: drive_title, company, status, deadline, created_at.
+    Only accessible by admin users.
+    """
+    drives = (
+        PlacementDrive.query.join(Company)
+        .order_by(PlacementDrive.created_at.desc())
+        .all()
+    )
+
+    return jsonify([_format_drive_row(drive) for drive in drives]), 200
+
+
+@admin_bp.route("/admin/drive/<int:drive_id>/approve", methods=["PUT"])
+@admin_required
+def approve_drive(drive_id):
+    """Set placement drive status to Approved."""
+    drive = PlacementDrive.query.get(drive_id)
+    if not drive:
+        return jsonify({"message": "Placement drive not found"}), 404
+
+    drive.status = "Approved"
+    db.session.commit()
+
+    return jsonify({"message": "Placement drive approved successfully"}), 200
+
+
+@admin_bp.route("/admin/drive/<int:drive_id>/reject", methods=["PUT"])
+@admin_required
+def reject_drive(drive_id):
+    """Set placement drive status to Rejected."""
+    drive = PlacementDrive.query.get(drive_id)
+    if not drive:
+        return jsonify({"message": "Placement drive not found"}), 404
+
+    drive.status = "Rejected"
+    db.session.commit()
+
+    return jsonify({"message": "Placement drive rejected successfully"}), 200

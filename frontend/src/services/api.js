@@ -93,4 +93,36 @@ export async function getAdminDashboard() {
   return response.data;
 }
 
+// ---------- Admin approval APIs (Stage 4.2) ----------
+
+export async function fetchCompanies() {
+  const response = await apiClient.get("/admin/companies");
+  return response.data;
+}
+
+export async function approveCompany(companyId) {
+  const response = await apiClient.put(`/admin/company/${companyId}/approve`);
+  return response.data;
+}
+
+export async function rejectCompany(companyId) {
+  const response = await apiClient.put(`/admin/company/${companyId}/reject`);
+  return response.data;
+}
+
+export async function fetchDrives() {
+  const response = await apiClient.get("/admin/drives");
+  return response.data;
+}
+
+export async function approveDrive(driveId) {
+  const response = await apiClient.put(`/admin/drive/${driveId}/approve`);
+  return response.data;
+}
+
+export async function rejectDrive(driveId) {
+  const response = await apiClient.put(`/admin/drive/${driveId}/reject`);
+  return response.data;
+}
+
 export default apiClient;

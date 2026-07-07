@@ -12,6 +12,8 @@ import Login from "../views/Login.vue";
 import StudentRegister from "../views/StudentRegister.vue";
 import CompanyRegister from "../views/CompanyRegister.vue";
 import AdminDashboard from "../views/AdminDashboard.vue";
+import Companies from "../views/Companies.vue";
+import PlacementDrives from "../views/PlacementDrives.vue";
 import StudentDashboard from "../views/StudentDashboard.vue";
 import CompanyDashboard from "../views/CompanyDashboard.vue";
 
@@ -41,6 +43,18 @@ const routes = [
     path: "/admin",
     name: "AdminDashboard",
     component: AdminDashboard,
+    meta: { requiresAdmin: true },
+  },
+  {
+    path: "/admin/companies",
+    name: "Companies",
+    component: Companies,
+    meta: { requiresAdmin: true },
+  },
+  {
+    path: "/admin/drives",
+    name: "PlacementDrives",
+    component: PlacementDrives,
     meta: { requiresAdmin: true },
   },
   {
