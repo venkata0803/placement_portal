@@ -98,6 +98,16 @@ export async function getCompanyDashboard() {
   return response.data;
 }
 
+export async function getCompanyDrives() {
+  const response = await apiClient.get("/company/drives");
+  return response.data;
+}
+
+export async function createPlacementDrive(driveData) {
+  const response = await apiClient.post("/company/drives", driveData);
+  return response.data;
+}
+
 // ---------- Admin approval APIs (Stage 4.2) ----------
 
 export async function fetchCompanies() {

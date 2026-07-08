@@ -92,7 +92,7 @@ export default {
 
       <div class="navbar-nav ms-auto flex-row align-items-center gap-2">
         <router-link class="nav-link text-light" to="/company">Dashboard</router-link>
-        <span class="nav-link disabled text-secondary">Placement Drives</span>
+        <router-link class="nav-link text-light" to="/company/drives">Placement Drives</router-link>
         <span class="nav-link disabled text-secondary">Applicants</span>
         <span class="nav-link disabled text-secondary">Profile</span>
         <button
@@ -114,7 +114,7 @@ export default {
             <router-link class="nav-link active" to="/company">Dashboard</router-link>
           </li>
           <li class="nav-item">
-            <span class="nav-link disabled text-muted">Placement Drives</span>
+            <router-link class="nav-link" to="/company/drives">Placement Drives</router-link>
           </li>
           <li class="nav-item">
             <span class="nav-link disabled text-muted">Applicants</span>
