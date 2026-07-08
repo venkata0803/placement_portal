@@ -149,6 +149,8 @@ def _format_company_drive_row(drive):
     return {
         "id": drive.id,
         "title": drive.job_title,
+        # Included so the Edit modal can pre-fill the description field
+        "job_description": drive.job_description,
         "eligible_branch": drive.eligible_branch,
         "minimum_cgpa": drive.minimum_cgpa,
         "eligible_year": drive.eligible_year,
@@ -158,6 +160,19 @@ def _format_company_drive_row(drive):
         "status": drive.status,
         "created_at": drive.created_at.isoformat() if drive.created_at else None,
     }
+
+
+def _get_owned_drive(company, drive_id):
+    """
+    Find a placement drive that belongs to this company.
+
+    Ownership rule: drive.company_id must match the logged-in company.
+    Returns the drive, or None if not found / not owned.
+    """
+    return PlacementDrive.query.filter_by(
+        id=drive_id,
+        company_id=company.id,
+    ).first()
 
 
 @company_bp.route("/company/dashboard", methods=["GET"])
@@ -261,3 +276,90 @@ def create_company_drive():
     db.session.commit()
 
     return jsonify({"message": "Placement drive created successfully"}), 201
+
+
+@company_bp.route("/company/drives/<int:drive_id>", methods=["PUT"])
+@company_required
+def update_company_drive(drive_id):
+    """
+    Update an existing placement drive (Stage 5.3).
+
+    Edit workflow:
+      1. @company_required → only company users
+      2. Company must be Approved
+      3. Drive must belong to this company (owner check)
+      4. Closed drives cannot be edited
+      5. Reuse _validate_drive_data for fields / CGPA / deadline
+      6. Save updates and return success message
+
+    Validation (same as create):
+      - Deadline cannot be in the past
+      - CGPA must be between 0 and 10
+      - All fields are required
+    """
+    company = _get_current_company()
+    error_response, status_code = _check_company_approval(company)
+    if error_response:
+        return error_response, status_code
+
+    # Ownership: only the company that created the drive can update it
+    drive = _get_owned_drive(company, drive_id)
+    if not drive:
+        return jsonify({"message": "Placement drive not found"}), 404
+
+    # Closed drives are locked — no further edits allowed
+    if drive.status == "Closed":
+        return jsonify({"message": "Closed drives cannot be edited"}), 400
+
+    request_data = request.get_json(silent=True) or {}
+    is_valid, error_message, parsed_values = _validate_drive_data(request_data)
+
+    if not is_valid:
+        return jsonify({"message": error_message}), 400
+
+    # Apply validated values to the existing drive row
+    drive.job_title = parsed_values["job_title"]
+    drive.job_description = parsed_values["job_description"]
+    drive.eligible_branch = parsed_values["eligible_branch"]
+    drive.minimum_cgpa = parsed_values["minimum_cgpa"]
+    drive.eligible_year = parsed_values["eligible_year"]
+    drive.application_deadline = parsed_values["application_deadline"]
+
+    db.session.commit()
+
+    return jsonify({"message": "Placement drive updated successfully"}), 200
+
+
+@company_bp.route("/company/drives/<int:drive_id>/close", methods=["PATCH"])
+@company_required
+def close_company_drive(drive_id):
+    """
+    Close a placement drive (Stage 5.3).
+
+    Close workflow:
+      1. @company_required → only company users
+      2. Company must be Approved
+      3. Drive must belong to this company (owner check)
+      4. If already Closed → return a clear message
+      5. Otherwise set status = "Closed" and save
+
+    Does NOT delete the drive — only changes status.
+    """
+    company = _get_current_company()
+    error_response, status_code = _check_company_approval(company)
+    if error_response:
+        return error_response, status_code
+
+    # Ownership: only the company that created the drive can close it
+    drive = _get_owned_drive(company, drive_id)
+    if not drive:
+        return jsonify({"message": "Placement drive not found"}), 404
+
+    # Already closed — return an informative message (not an error crash)
+    if drive.status == "Closed":
+        return jsonify({"message": "Placement drive is already closed"}), 400
+
+    drive.status = "Closed"
+    db.session.commit()
+
+    return jsonify({"message": "Placement drive closed successfully"}), 200

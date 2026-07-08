@@ -1,19 +1,26 @@
 <script>
 /**
- * PlacementDrives.vue - Company Placement Drives (Stage 5.2)
+ * PlacementDrives.vue - Company Placement Drives (Stage 5.2 + 5.3)
  *
  * Frontend flow:
  * 1. On mount, loadDrives() fetches GET /company/drives
- * 2. User clicks "Create New Drive" → Bootstrap modal opens
- * 3. User fills form and submits → POST /company/drives
- * 4. On success: clear form, close modal, show alert, refresh table
+ * 2. Create → Bootstrap modal → POST /company/drives → refresh table
+ * 3. Edit → Bootstrap modal (pre-filled) → PUT /company/drives/<id> → refresh
+ * 4. Close → confirmation dialog → PATCH /company/drives/<id>/close → refresh
+ *
+ * Badge colors:
+ *   Pending  = yellow (warning)
+ *   Approved = green  (success)
+ *   Closed   = gray   (secondary)
  */
 
 import {
   clearAuthData,
+  closePlacementDrive,
   createPlacementDrive,
   getCompanyDrives,
   logout,
+  updatePlacementDrive,
 } from "../../services/api.js";
 
 export default {
@@ -23,11 +30,26 @@ export default {
     return {
       loading: true,
       error: null,
+      actionError: null,
       successMessage: null,
       drives: [],
+
+      // Create modal state
       showCreateModal: false,
+
+      // Edit modal state (Stage 5.3)
+      showEditModal: false,
+      editingDriveId: null,
+
+      // Close confirmation dialog (Stage 5.3)
+      showCloseModal: false,
+      closingDriveId: null,
+      closingDriveTitle: "",
+
       submitting: false,
       formError: null,
+
+      // Shared form fields for create and edit
       driveForm: {
         job_title: "",
         job_description: "",
@@ -62,25 +84,19 @@ export default {
       }
     },
 
-    /**
-     * Open the create drive modal and reset form errors.
-     */
+    // ---------- Create drive ----------
+
     openCreateModal() {
+      this.clearDriveForm();
       this.formError = null;
       this.showCreateModal = true;
     },
 
-    /**
-     * Close the create drive modal.
-     */
     closeCreateModal() {
       this.showCreateModal = false;
       this.formError = null;
     },
 
-    /**
-     * Reset the create drive form to empty values.
-     */
     clearDriveForm() {
       this.driveForm = {
         job_title: "",
@@ -102,7 +118,6 @@ export default {
 
       try {
         await createPlacementDrive(this.driveForm);
-
         this.successMessage = "Placement drive created successfully.";
         this.clearDriveForm();
         this.closeCreateModal();
@@ -114,6 +129,120 @@ export default {
       } finally {
         this.submitting = false;
       }
+    },
+
+    // ---------- Edit drive (Stage 5.3) ----------
+
+    /**
+     * Open Edit modal and populate form with the selected drive's values.
+     * Closed drives cannot be edited (button is hidden; backend also blocks).
+     */
+    openEditModal(drive) {
+      this.editingDriveId = drive.id;
+      this.formError = null;
+
+      // Populate form so the user sees current values
+      this.driveForm = {
+        job_title: drive.title || "",
+        job_description: drive.job_description || "",
+        eligible_branch: drive.eligible_branch || "",
+        minimum_cgpa: drive.minimum_cgpa ?? "",
+        eligible_year: drive.eligible_year ?? "",
+        // datetime-local needs "YYYY-MM-DDTHH:MM" (no seconds / timezone)
+        application_deadline: this.toDateTimeLocal(drive.deadline),
+      };
+
+      this.showEditModal = true;
+    },
+
+    closeEditModal() {
+      this.showEditModal = false;
+      this.editingDriveId = null;
+      this.formError = null;
+    },
+
+    /**
+     * Save edits via PUT /company/drives/<id>, then refresh the table.
+     */
+    async handleUpdateDrive() {
+      this.submitting = true;
+      this.formError = null;
+      this.successMessage = null;
+      this.actionError = null;
+
+      try {
+        const result = await updatePlacementDrive(
+          this.editingDriveId,
+          this.driveForm
+        );
+        this.successMessage =
+          result.message || "Placement drive updated successfully.";
+        this.closeEditModal();
+        await this.loadDrives();
+      } catch (err) {
+        this.formError =
+          err.response?.data?.message ||
+          "Failed to update placement drive. Please try again.";
+      } finally {
+        this.submitting = false;
+      }
+    },
+
+    // ---------- Close drive (Stage 5.3) ----------
+
+    /**
+     * Open Bootstrap confirmation dialog before closing a drive.
+     */
+    openCloseModal(drive) {
+      this.closingDriveId = drive.id;
+      this.closingDriveTitle = drive.title;
+      this.showCloseModal = true;
+    },
+
+    closeCloseModal() {
+      this.showCloseModal = false;
+      this.closingDriveId = null;
+      this.closingDriveTitle = "";
+    },
+
+    /**
+     * Confirm close → PATCH /company/drives/<id>/close → refresh table.
+     */
+    async handleConfirmClose() {
+      this.submitting = true;
+      this.successMessage = null;
+      this.actionError = null;
+
+      try {
+        const result = await closePlacementDrive(this.closingDriveId);
+        this.successMessage =
+          result.message || "Placement drive closed successfully.";
+        this.closeCloseModal();
+        await this.loadDrives();
+      } catch (err) {
+        // Keep the table visible — show action error above it
+        this.actionError =
+          err.response?.data?.message ||
+          "Failed to close placement drive. Please try again.";
+        this.closeCloseModal();
+      } finally {
+        this.submitting = false;
+      }
+    },
+
+    // ---------- Helpers ----------
+
+    /**
+     * Convert ISO deadline to datetime-local input value.
+     * Example: "2026-08-01T10:30:00" → "2026-08-01T10:30"
+     */
+    toDateTimeLocal(isoString) {
+      if (!isoString) {
+        return "";
+      }
+
+      // Take first 16 chars (YYYY-MM-DDTHH:MM) for datetime-local inputs
+      return isoString.slice(0, 16);
     },
 
     /**
@@ -129,7 +258,7 @@ export default {
     },
 
     /**
-     * Return Bootstrap badge class based on drive status.
+     * Badge colors: Pending=yellow, Approved=green, Closed=gray.
      */
     getStatusBadgeClass(status) {
       if (status === "Pending") {
@@ -138,8 +267,8 @@ export default {
       if (status === "Approved") {
         return "bg-success";
       }
-      if (status === "Rejected") {
-        return "bg-danger";
+      if (status === "Closed") {
+        return "bg-secondary";
       }
       return "bg-secondary";
     },
@@ -234,6 +363,20 @@ export default {
           ></button>
         </div>
 
+        <!-- Action Error (edit/close failures — does not hide the table) -->
+        <div
+          v-if="actionError"
+          class="alert alert-danger alert-dismissible fade show"
+          role="alert"
+        >
+          {{ actionError }}
+          <button
+            type="button"
+            class="btn-close"
+            @click="actionError = null"
+          ></button>
+        </div>
+
         <!-- Loading State -->
         <div v-if="loading" class="text-center py-5">
           <div class="spinner-border text-primary" role="status">
@@ -242,7 +385,7 @@ export default {
           <p class="mt-2 text-muted">Loading placement drives...</p>
         </div>
 
-        <!-- Error State (e.g. company approval pending) -->
+        <!-- Load Error State (e.g. company approval pending) -->
         <div v-else-if="error" class="alert alert-warning" role="alert">
           {{ error }}
         </div>
@@ -260,11 +403,12 @@ export default {
                   <th scope="col">Deadline</th>
                   <th scope="col">Status</th>
                   <th scope="col">Created Date</th>
+                  <th scope="col">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="drives.length === 0">
-                  <td colspan="7" class="text-center text-muted">
+                  <td colspan="8" class="text-center text-muted">
                     No placement drives created yet.
                   </td>
                 </tr>
@@ -280,6 +424,29 @@ export default {
                     </span>
                   </td>
                   <td>{{ formatDate(drive.created_at) }}</td>
+                  <td>
+                    <!-- Edit: hidden when Closed (backend also blocks) -->
+                    <button
+                      v-if="drive.status !== 'Closed'"
+                      type="button"
+                      class="btn btn-sm btn-outline-primary me-1"
+                      @click="openEditModal(drive)"
+                    >
+                      Edit
+                    </button>
+                    <!-- Close: hidden when already Closed -->
+                    <button
+                      v-if="drive.status !== 'Closed'"
+                      type="button"
+                      class="btn btn-sm btn-outline-secondary"
+                      @click="openCloseModal(drive)"
+                    >
+                      Close
+                    </button>
+                    <span v-if="drive.status === 'Closed'" class="text-muted small">
+                      —
+                    </span>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -407,6 +574,191 @@ export default {
               </button>
             </div>
           </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit Drive Modal (Stage 5.3) -->
+    <div
+      v-if="showEditModal"
+      class="modal fade show d-block"
+      tabindex="-1"
+      style="background-color: rgba(0, 0, 0, 0.5)"
+      @click.self="closeEditModal"
+    >
+      <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Edit Placement Drive</h5>
+            <button
+              type="button"
+              class="btn-close"
+              @click="closeEditModal"
+            ></button>
+          </div>
+
+          <form @submit.prevent="handleUpdateDrive">
+            <div class="modal-body">
+              <div v-if="formError" class="alert alert-danger" role="alert">
+                {{ formError }}
+              </div>
+
+              <div class="mb-3">
+                <label for="editJobTitle" class="form-label">Job Title</label>
+                <input
+                  id="editJobTitle"
+                  v-model="driveForm.job_title"
+                  type="text"
+                  class="form-control"
+                  required
+                />
+              </div>
+
+              <div class="mb-3">
+                <label for="editJobDescription" class="form-label">Description</label>
+                <textarea
+                  id="editJobDescription"
+                  v-model="driveForm.job_description"
+                  class="form-control"
+                  rows="3"
+                  required
+                ></textarea>
+              </div>
+
+              <div class="mb-3">
+                <label for="editEligibleBranch" class="form-label">
+                  Eligible Branch
+                </label>
+                <input
+                  id="editEligibleBranch"
+                  v-model="driveForm.eligible_branch"
+                  type="text"
+                  class="form-control"
+                  placeholder="e.g. CSE, ECE"
+                  required
+                />
+              </div>
+
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="editMinimumCgpa" class="form-label">
+                    Minimum CGPA
+                  </label>
+                  <input
+                    id="editMinimumCgpa"
+                    v-model="driveForm.minimum_cgpa"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="10"
+                    class="form-control"
+                    required
+                  />
+                </div>
+
+                <div class="col-md-6 mb-3">
+                  <label for="editEligibleYear" class="form-label">
+                    Eligible Year
+                  </label>
+                  <input
+                    id="editEligibleYear"
+                    v-model="driveForm.eligible_year"
+                    type="number"
+                    min="1"
+                    max="5"
+                    class="form-control"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div class="mb-3">
+                <label for="editApplicationDeadline" class="form-label">
+                  Deadline
+                </label>
+                <input
+                  id="editApplicationDeadline"
+                  v-model="driveForm.application_deadline"
+                  type="datetime-local"
+                  class="form-control"
+                  required
+                />
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button
+                type="button"
+                class="btn btn-secondary"
+                :disabled="submitting"
+                @click="closeEditModal"
+              >
+                Cancel
+              </button>
+              <button type="submit" class="btn btn-primary" :disabled="submitting">
+                <span
+                  v-if="submitting"
+                  class="spinner-border spinner-border-sm me-1"
+                  role="status"
+                ></span>
+                Save
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Close Confirmation Dialog (Stage 5.3) -->
+    <div
+      v-if="showCloseModal"
+      class="modal fade show d-block"
+      tabindex="-1"
+      style="background-color: rgba(0, 0, 0, 0.5)"
+      @click.self="closeCloseModal"
+    >
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Close Placement Drive</h5>
+            <button
+              type="button"
+              class="btn-close"
+              @click="closeCloseModal"
+            ></button>
+          </div>
+
+          <div class="modal-body">
+            <p class="mb-0">
+              Are you sure you want to close
+              <strong>{{ closingDriveTitle }}</strong>?
+              Closed drives cannot be edited.
+            </p>
+          </div>
+
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              :disabled="submitting"
+              @click="closeCloseModal"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              class="btn btn-dark"
+              :disabled="submitting"
+              @click="handleConfirmClose"
+            >
+              <span
+                v-if="submitting"
+                class="spinner-border spinner-border-sm me-1"
+                role="status"
+              ></span>
+              Confirm Close
+            </button>
+          </div>
         </div>
       </div>
     </div>

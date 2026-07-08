@@ -108,6 +108,24 @@ export async function createPlacementDrive(driveData) {
   return response.data;
 }
 
+/**
+ * Update an existing placement drive (Stage 5.3).
+ * PUT /company/drives/<id>
+ */
+export async function updatePlacementDrive(driveId, driveData) {
+  const response = await apiClient.put(`/company/drives/${driveId}`, driveData);
+  return response.data;
+}
+
+/**
+ * Close a placement drive (Stage 5.3).
+ * PATCH /company/drives/<id>/close
+ */
+export async function closePlacementDrive(driveId) {
+  const response = await apiClient.patch(`/company/drives/${driveId}/close`);
+  return response.data;
+}
+
 // ---------- Admin approval APIs (Stage 4.2) ----------
 
 export async function fetchCompanies() {
