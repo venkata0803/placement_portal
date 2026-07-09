@@ -34,6 +34,8 @@ class Student(db.Model):
     year = db.Column(db.Integer, nullable=False)
     cgpa = db.Column(db.Float, nullable=False)
     phone = db.Column(db.String(15), nullable=False)
+    # Optional skills text (e.g. "Python, SQL, Vue") — Stage 6.2
+    skills = db.Column(db.String(500), nullable=True)
     resume_filename = db.Column(db.String(200), nullable=True)
 
     # Relationship: One Student can apply to MANY placement drives

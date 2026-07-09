@@ -11,6 +11,8 @@ When the app starts:
 2. A default admin user is created if one does not already exist
 """
 
+import os
+
 from flask import Flask, jsonify
 from config import Config
 from extensions import db, migrate, cors, jwt
@@ -36,13 +38,19 @@ def create_app():
     cors.init_app(app)     # Enable CORS for all routes
     jwt.init_app(app)      # Enable JWT support
 
-    # Step 4: Create database tables and default admin user
+    # Step 4: Create database tables, upload folder, and default admin user
     with app.app_context():
         # Import models so SQLAlchemy registers all table definitions
         import models  # noqa: F401
 
         # Create all tables in SQLite if they do not exist yet
         db.create_all()
+
+        # SQLite create_all() does not add new columns to existing tables
+        ensure_student_skills_column()
+
+        # Make sure resume upload directory exists
+        os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
         # Create the default admin account on first run
         create_default_admin()
@@ -52,16 +60,40 @@ def create_app():
     from routes.test_routes import test_bp
     from routes.admin import admin_bp
     from routes.company import company_bp
+    from routes.student import student_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(test_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(company_bp)
+    app.register_blueprint(student_bp)
 
     # Step 6: Register basic test routes
     register_routes(app)
 
     return app
+
+
+def ensure_student_skills_column():
+    """
+    Stage 6.2: add students.skills if the database was created before this column existed.
+
+    SQLite's create_all() only creates missing tables — it does not ALTER existing ones.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    if "students" not in inspector.get_table_names():
+        return
+
+    column_names = [col["name"] for col in inspector.get_columns("students")]
+    if "skills" in column_names:
+        return
+
+    with db.engine.connect() as connection:
+        connection.execute(text("ALTER TABLE students ADD COLUMN skills VARCHAR(500)"))
+        connection.commit()
+    print("Added students.skills column")
 
 
 def create_default_admin():

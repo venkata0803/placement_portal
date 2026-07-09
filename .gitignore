@@ -73,3 +73,9 @@ Thumbs.db
 .coverage
 htmlcov/
 .pytest_cache/
+
+# Uploaded student resumes (Stage 6.2) — keep folder, ignore PDF files
+backend/uploads/resumes/*
+!backend/uploads/resumes/.gitkeep
+!backend/uploads/resumes/.gitignore
+

@@ -15,6 +15,7 @@ import AdminDashboard from "../views/AdminDashboard.vue";
 import Companies from "../views/Companies.vue";
 import PlacementDrives from "../views/PlacementDrives.vue";
 import StudentDashboard from "../views/StudentDashboard.vue";
+import StudentProfile from "../views/StudentProfile.vue";
 import CompanyDashboard from "../views/CompanyDashboard.vue";
 import CompanyPlacementDrives from "../views/company/PlacementDrives.vue";
 
@@ -62,6 +63,13 @@ const routes = [
     path: "/student",
     name: "StudentDashboard",
     component: StudentDashboard,
+    meta: { requiresStudent: true },
+  },
+  {
+    path: "/student/profile",
+    name: "StudentProfile",
+    component: StudentProfile,
+    meta: { requiresStudent: true },
   },
   {
     path: "/company",
@@ -95,6 +103,14 @@ router.beforeEach((to, from, next) => {
 
   if (to.meta.requiresCompany) {
     if (!isLoggedIn() || getRole() !== "company") {
+      next({ name: "Login" });
+      return;
+    }
+  }
+
+  // Stage 6.1: only authenticated Student users can open /student
+  if (to.meta.requiresStudent) {
+    if (!isLoggedIn() || getRole() !== "student") {
       next({ name: "Login" });
       return;
     }

@@ -98,6 +98,49 @@ export async function getCompanyDashboard() {
   return response.data;
 }
 
+/**
+ * Fetch student dashboard data (Stage 6.1).
+ * GET /student/dashboard — requires Student JWT
+ */
+export async function getStudentDashboard() {
+  const response = await apiClient.get("/student/dashboard");
+  return response.data;
+}
+
+/**
+ * Fetch student profile (Stage 6.2).
+ * GET /student/profile
+ */
+export async function getStudentProfile() {
+  const response = await apiClient.get("/student/profile");
+  return response.data;
+}
+
+/**
+ * Update student profile (Stage 6.2).
+ * PUT /student/profile
+ * Body: { full_name, phone, cgpa, skills }
+ */
+export async function updateStudentProfile(profileData) {
+  const response = await apiClient.put("/student/profile", profileData);
+  return response.data;
+}
+
+/**
+ * Upload student resume PDF (Stage 6.2).
+ * POST /student/upload-resume — multipart/form-data with field "resume"
+ */
+export async function uploadStudentResume(file) {
+  const formData = new FormData();
+  formData.append("resume", file);
+
+  // Axios detects FormData and sets multipart/form-data with boundary
+  const response = await apiClient.post("/student/upload-resume", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return response.data;
+}
+
 export async function getCompanyDrives() {
   const response = await apiClient.get("/company/drives");
   return response.data;
