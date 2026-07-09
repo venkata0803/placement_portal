@@ -109,11 +109,27 @@ def _format_company_row(company):
 
 
 def _format_drive_row(drive):
-    """Build one placement drive entry for the admin drives list."""
+    """
+    Build one placement drive entry for the admin drives list (Stage 7.1).
+
+    Contract for GET /admin/drives:
+      - Drive ID
+      - Job Title
+      - Company Name
+      - Eligible Branch
+      - Minimum CGPA
+      - Eligible Year
+      - Deadline
+      - Status
+      - Created Date
+    """
     return {
         "id": drive.id,
-        "drive_title": drive.job_title,
-        "company": drive.company.company_name,
+        "job_title": drive.job_title,
+        "company_name": drive.company.company_name if drive.company else "",
+        "eligible_branch": drive.eligible_branch,
+        "minimum_cgpa": drive.minimum_cgpa,
+        "eligible_year": drive.eligible_year,
         "status": drive.status,
         "deadline": drive.application_deadline.isoformat()
         if drive.application_deadline
@@ -172,10 +188,10 @@ def reject_company(company_id):
 @admin_required
 def get_all_drives():
     """
-    Return all placement drives for admin review.
+    Return all placement drives for admin review (Stage 7.1).
 
-    Fields: drive_title, company, status, deadline, created_at.
-    Only accessible by admin users.
+    Sorting: newest first (created_at DESC).
+    Only accessible by admin users (JWT role = admin).
     """
     drives = (
         PlacementDrive.query.join(Company)
@@ -186,13 +202,42 @@ def get_all_drives():
     return jsonify([_format_drive_row(drive) for drive in drives]), 200
 
 
-@admin_bp.route("/admin/drive/<int:drive_id>/approve", methods=["PUT"])
-@admin_required
-def approve_drive(drive_id):
-    """Set placement drive status to Approved."""
-    drive = PlacementDrive.query.get(drive_id)
+def _validate_drive_action(drive, new_status):
+    """
+    Validation rules (Stage 7.1):
+      - If already Approved → return message
+      - If already Rejected → return message
+    """
     if not drive:
         return jsonify({"message": "Placement drive not found"}), 404
+
+    if drive.status == "Approved":
+        return jsonify({"message": "Placement drive is already approved"}), 400
+
+    if drive.status == "Rejected":
+        return jsonify({"message": "Placement drive is already rejected"}), 400
+
+    # Only allow the two admin actions in this stage
+    if new_status not in ("Approved", "Rejected"):
+        return jsonify({"message": "Invalid status update"}), 400
+
+    return None, None
+
+
+# Stage 7.1 routes (exact paths requested)
+@admin_bp.route("/admin/drives/<int:drive_id>/approve", methods=["PUT"])
+@admin_required
+def approve_drive(drive_id):
+    """
+    Approve a placement drive (Stage 7.1).
+
+    PUT /admin/drives/<id>/approve
+    Updates: status = "Approved"
+    """
+    drive = PlacementDrive.query.get(drive_id)
+    error_response, status_code = _validate_drive_action(drive, "Approved")
+    if error_response:
+        return error_response, status_code
 
     drive.status = "Approved"
     db.session.commit()
@@ -200,15 +245,46 @@ def approve_drive(drive_id):
     return jsonify({"message": "Placement drive approved successfully"}), 200
 
 
-@admin_bp.route("/admin/drive/<int:drive_id>/reject", methods=["PUT"])
+@admin_bp.route("/admin/drives/<int:drive_id>/reject", methods=["PUT"])
 @admin_required
 def reject_drive(drive_id):
-    """Set placement drive status to Rejected."""
+    """
+    Reject a placement drive (Stage 7.1).
+
+    PUT /admin/drives/<id>/reject
+    Updates: status = "Rejected"
+    """
     drive = PlacementDrive.query.get(drive_id)
-    if not drive:
-        return jsonify({"message": "Placement drive not found"}), 404
+    error_response, status_code = _validate_drive_action(drive, "Rejected")
+    if error_response:
+        return error_response, status_code
 
     drive.status = "Rejected"
     db.session.commit()
 
+    return jsonify({"message": "Placement drive rejected successfully"}), 200
+
+
+# Backward-compatible Stage 4.2 routes (kept so older frontend code doesn't break)
+@admin_bp.route("/admin/drive/<int:drive_id>/approve", methods=["PUT"])
+@admin_required
+def approve_drive_legacy(drive_id):
+    drive = PlacementDrive.query.get(drive_id)
+    error_response, status_code = _validate_drive_action(drive, "Approved")
+    if error_response:
+        return error_response, status_code
+    drive.status = "Approved"
+    db.session.commit()
+    return jsonify({"message": "Placement drive approved successfully"}), 200
+
+
+@admin_bp.route("/admin/drive/<int:drive_id>/reject", methods=["PUT"])
+@admin_required
+def reject_drive_legacy(drive_id):
+    drive = PlacementDrive.query.get(drive_id)
+    error_response, status_code = _validate_drive_action(drive, "Rejected")
+    if error_response:
+        return error_response, status_code
+    drive.status = "Rejected"
+    db.session.commit()
     return jsonify({"message": "Placement drive rejected successfully"}), 200

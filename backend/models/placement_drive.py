@@ -43,7 +43,7 @@ class PlacementDrive(db.Model):
 
     application_deadline = db.Column(db.DateTime, nullable=False)
 
-    # status can be: "Pending", "Approved", or "Closed"
+    # status can be: "Pending", "Approved", "Rejected", or "Closed"
     status = db.Column(db.String(20), default="Pending", nullable=False)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
