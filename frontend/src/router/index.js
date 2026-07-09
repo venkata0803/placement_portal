@@ -16,6 +16,8 @@ import Companies from "../views/Companies.vue";
 import PlacementDrives from "../views/PlacementDrives.vue";
 import StudentDashboard from "../views/StudentDashboard.vue";
 import StudentProfile from "../views/StudentProfile.vue";
+import BrowsePlacementDrives from "../views/BrowsePlacementDrives.vue";
+import MyApplications from "../views/MyApplications.vue";
 import CompanyDashboard from "../views/CompanyDashboard.vue";
 import CompanyPlacementDrives from "../views/company/PlacementDrives.vue";
 
@@ -69,6 +71,18 @@ const routes = [
     path: "/student/profile",
     name: "StudentProfile",
     component: StudentProfile,
+    meta: { requiresStudent: true },
+  },
+  {
+    path: "/student/drives",
+    name: "BrowsePlacementDrives",
+    component: BrowsePlacementDrives,
+    meta: { requiresStudent: true },
+  },
+  {
+    path: "/student/applications",
+    name: "MyApplications",
+    component: MyApplications,
     meta: { requiresStudent: true },
   },
   {

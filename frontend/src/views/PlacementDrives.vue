@@ -49,7 +49,7 @@ export default {
     /** Show confirmation dialog, then approve the drive */
     async handleApprove(drive) {
       const confirmed = window.confirm(
-        `Approve placement drive "${drive.drive_title}"?`
+        `Approve placement drive "${drive.job_title}"?`
       );
       if (!confirmed) {
         return;
@@ -73,7 +73,7 @@ export default {
     /** Show confirmation dialog, then reject the drive */
     async handleReject(drive) {
       const confirmed = window.confirm(
-        `Reject placement drive "${drive.drive_title}"?`
+        `Reject placement drive "${drive.job_title}"?`
       );
       if (!confirmed) {
         return;
@@ -161,8 +161,11 @@ export default {
             <table class="table table-striped table-hover mb-0">
               <thead class="table-light">
                 <tr>
-                  <th scope="col">Title</th>
+                  <th scope="col">Job Title</th>
                   <th scope="col">Company</th>
+                  <th scope="col">Eligible Branch</th>
+                  <th scope="col">Minimum CGPA</th>
+                  <th scope="col">Eligible Year</th>
                   <th scope="col">Deadline</th>
                   <th scope="col">Status</th>
                   <th scope="col">Actions</th>
@@ -170,13 +173,16 @@ export default {
               </thead>
               <tbody>
                 <tr v-if="drives.length === 0">
-                  <td colspan="5" class="text-center text-muted">
+                  <td colspan="8" class="text-center text-muted">
                     No placement drives found.
                   </td>
                 </tr>
                 <tr v-for="drive in drives" :key="drive.id">
-                  <td>{{ drive.drive_title }}</td>
-                  <td>{{ drive.company }}</td>
+                  <td>{{ drive.job_title }}</td>
+                  <td>{{ drive.company_name }}</td>
+                  <td>{{ drive.eligible_branch }}</td>
+                  <td>{{ drive.minimum_cgpa }}</td>
+                  <td>{{ drive.eligible_year }}</td>
                   <td>{{ formatDate(drive.deadline) }}</td>
                   <td>
                     <span
@@ -189,14 +195,14 @@ export default {
                   <td>
                     <button
                       class="btn btn-sm btn-success me-2"
-                      :disabled="actionLoading || drive.status === 'Approved'"
+                      :disabled="actionLoading || drive.status !== 'Pending'"
                       @click="handleApprove(drive)"
                     >
                       Approve
                     </button>
                     <button
                       class="btn btn-sm btn-danger"
-                      :disabled="actionLoading || drive.status === 'Rejected'"
+                      :disabled="actionLoading || drive.status !== 'Pending'"
                       @click="handleReject(drive)"
                     >
                       Reject

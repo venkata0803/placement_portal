@@ -21,6 +21,7 @@ Resume Upload Flow
 
 import os
 import uuid
+from datetime import datetime
 
 from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity
@@ -28,7 +29,7 @@ from werkzeug.utils import secure_filename
 
 from decorators import student_required
 from extensions import db
-from models import Application, PlacementDrive, Student
+from models import Application, Company, PlacementDrive, Student
 
 student_bp = Blueprint("student", __name__)
 
@@ -137,6 +138,265 @@ def _is_allowed_resume(filename):
         return False
     extension = filename.rsplit(".", 1)[1].lower()
     return extension in ALLOWED_RESUME_EXTENSIONS
+
+
+# ---------- Stage 7.2: Browse Approved Drives (no applying yet) ----------
+
+
+def _get_query_param(name):
+    """Read and strip a query parameter value."""
+    value = request.args.get(name)
+    return value.strip() if isinstance(value, str) else value
+
+
+def _parse_int(value, field_name):
+    """Parse integer query params with clear error messages."""
+    if value is None or value == "":
+        return None, None
+    try:
+        return int(value), None
+    except (TypeError, ValueError):
+        return None, f"{field_name} must be a valid number"
+
+
+def _parse_float(value, field_name):
+    """Parse float query params with clear error messages."""
+    if value is None or value == "":
+        return None, None
+    try:
+        return float(value), None
+    except (TypeError, ValueError):
+        return None, f"{field_name} must be a valid number"
+
+
+def _format_drive_for_student(drive):
+    """
+    Build one drive entry for GET /student/drives (Stage 7.2).
+
+    Returned fields:
+      - Drive ID, Job Title, Company Name, Description
+      - Eligible Branch, Minimum CGPA, Eligible Year, Deadline
+    """
+    return {
+        "id": drive.id,
+        "job_title": drive.job_title,
+        "company_name": drive.company.company_name if drive.company else "",
+        "description": drive.job_description,
+        "eligible_branch": drive.eligible_branch,
+        "minimum_cgpa": drive.minimum_cgpa,
+        "eligible_year": drive.eligible_year,
+        "status": drive.status,
+        "deadline": drive.application_deadline.isoformat()
+        if drive.application_deadline
+        else None,
+        "created_at": drive.created_at.isoformat() if drive.created_at else None,
+    }
+
+
+def _normalize_branch_list(branch_text):
+    """
+    Convert eligible_branch text like "CSE, ECE" into a normalized list:
+    ["CSE", "ECE"] (uppercase, trimmed).
+    """
+    if not branch_text:
+        return []
+    parts = [p.strip().upper() for p in str(branch_text).split(",")]
+    return [p for p in parts if p]
+
+
+def _student_is_eligible(student, drive):
+    """
+    Eligibility checks:
+    - Branch must be listed in drive.eligible_branch
+    - CGPA must be >= drive.minimum_cgpa
+    - Year must match drive.eligible_year
+    """
+    eligible_branches = _normalize_branch_list(drive.eligible_branch)
+    student_branch = (student.branch or "").strip().upper()
+    if eligible_branches and student_branch not in eligible_branches:
+        return False, "You are not eligible for this drive (branch mismatch)"
+
+    if student.cgpa < float(drive.minimum_cgpa):
+        return False, "You are not eligible for this drive (CGPA too low)"
+
+    if int(student.year) != int(drive.eligible_year):
+        return False, "You are not eligible for this drive (year mismatch)"
+
+    return True, None
+
+
+def _deadline_has_passed(drive):
+    """Return True if application_deadline is in the past."""
+    if not drive.application_deadline:
+        return False
+    return drive.application_deadline < datetime.utcnow()
+
+
+@student_bp.route("/student/drives", methods=["GET"])
+@student_required
+def browse_approved_drives():
+    """
+    GET /student/drives (Stage 7.2)
+
+    Validation:
+      - Only Student users can access (@student_required).
+
+    Search (optional query params):
+      - job_title, company_name, branch
+
+    Filtering (optional query params):
+      - branch, year, minimum_cgpa
+
+    Notes:
+      - Returns ONLY drives where status == "Approved"
+      - Sorted by newest first (created_at DESC)
+      - Also returns already_applied so the UI can disable Apply
+    """
+    student = _get_current_student()
+    if not student:
+        return jsonify({"message": "Student profile not found"}), 404
+
+    job_title = _get_query_param("job_title")
+    company_name = _get_query_param("company_name")
+    branch = _get_query_param("branch")
+
+    year, year_error = _parse_int(_get_query_param("year"), "year")
+    if year_error:
+        return jsonify({"message": year_error}), 400
+
+    min_cgpa, cgpa_error = _parse_float(_get_query_param("minimum_cgpa"), "minimum_cgpa")
+    if cgpa_error:
+        return jsonify({"message": cgpa_error}), 400
+
+    query = PlacementDrive.query.join(Company).filter(PlacementDrive.status == "Approved")
+
+    # Search: simple "contains" matching using ilike (case-insensitive)
+    if job_title:
+        query = query.filter(PlacementDrive.job_title.ilike(f"%{job_title}%"))
+    if company_name:
+        query = query.filter(Company.company_name.ilike(f"%{company_name}%"))
+
+    # Branch is stored as text (sometimes comma-separated), so we use "contains"
+    if branch:
+        query = query.filter(PlacementDrive.eligible_branch.ilike(f"%{branch}%"))
+
+    # Filters: exact year, and drives whose minimum CGPA requirement is <= given CGPA
+    if year is not None:
+        query = query.filter(PlacementDrive.eligible_year == year)
+    if min_cgpa is not None:
+        query = query.filter(PlacementDrive.minimum_cgpa <= min_cgpa)
+
+    drives = query.order_by(PlacementDrive.created_at.desc()).all()
+
+    # Build a set of drive_ids already applied by this student (for UX)
+    drive_ids = [d.id for d in drives]
+    applied_ids = set()
+    if drive_ids:
+        rows = Application.query.filter(
+            Application.student_id == student.id,
+            Application.drive_id.in_(drive_ids),
+        ).all()
+        applied_ids = {r.drive_id for r in rows}
+
+    result = []
+    for d in drives:
+        row = _format_drive_for_student(d)
+        row["already_applied"] = d.id in applied_ids
+        result.append(row)
+
+    return jsonify(result), 200
+
+
+# ---------- Stage 7 Combined: Student Apply + My Applications ----------
+
+
+@student_bp.route("/student/apply/<int:drive_id>", methods=["POST"])
+@student_required
+def apply_to_drive(drive_id):
+    """
+    POST /student/apply/<drive_id>
+
+    Rules:
+    - Student can apply only once
+    - Drive must be Approved (not Pending/Rejected/Closed)
+    - Deadline must not have passed
+    - Student must satisfy branch, CGPA, year
+    """
+    student = _get_current_student()
+    if not student:
+        return jsonify({"message": "Student profile not found"}), 404
+
+    drive = PlacementDrive.query.get(drive_id)
+    if not drive:
+        return jsonify({"message": "Placement drive not found"}), 404
+
+    if drive.status != "Approved":
+        return jsonify({"message": "You can apply only to approved drives"}), 400
+
+    if _deadline_has_passed(drive):
+        return jsonify({"message": "Application deadline has passed"}), 400
+
+    # Prevent duplicates
+    existing = Application.query.filter_by(
+        student_id=student.id,
+        drive_id=drive.id,
+    ).first()
+    if existing:
+        return jsonify({"message": "You have already applied to this drive"}), 400
+
+    eligible, reason = _student_is_eligible(student, drive)
+    if not eligible:
+        return jsonify({"message": reason}), 400
+
+    application = Application(
+        student_id=student.id,
+        drive_id=drive.id,
+        status="Applied",
+        application_date=datetime.utcnow(),
+    )
+    db.session.add(application)
+    db.session.commit()
+
+    return jsonify({"message": "Application submitted successfully"}), 201
+
+
+def _format_application_row(app):
+    """Return one application row for GET /student/applications."""
+    drive = app.drive
+    company_name = drive.company.company_name if drive and drive.company else ""
+    return {
+        "id": app.id,
+        "drive_id": app.drive_id,
+        "job_title": drive.job_title if drive else "",
+        "company_name": company_name,
+        "applied_date": app.application_date.isoformat() if app.application_date else None,
+        "status": app.status,
+    }
+
+
+@student_bp.route("/student/applications", methods=["GET"])
+@student_required
+def get_my_applications():
+    """
+    GET /student/applications
+
+    Return ONLY the logged-in student's applications.
+    Sorted: newest first (application_date DESC).
+
+    Status values used in the UI:
+    Applied, Shortlisted, Interview, Selected, Rejected
+    """
+    student = _get_current_student()
+    if not student:
+        return jsonify({"message": "Student profile not found"}), 404
+
+    apps = (
+        Application.query.filter_by(student_id=student.id)
+        .order_by(Application.application_date.desc())
+        .all()
+    )
+
+    return jsonify([_format_application_row(a) for a in apps]), 200
 
 
 # ---------- Stage 6.1: Dashboard ----------

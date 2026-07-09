@@ -141,6 +141,40 @@ export async function uploadStudentResume(file) {
   return response.data;
 }
 
+/**
+ * Browse ONLY approved placement drives (Stage 7.2).
+ *
+ * GET /student/drives
+ * Optional query params:
+ *   - job_title
+ *   - company_name
+ *   - branch
+ *   - year
+ *   - minimum_cgpa
+ */
+export async function getApprovedDrives(params = {}) {
+  const response = await apiClient.get("/student/drives", { params });
+  return response.data;
+}
+
+/**
+ * Apply to a placement drive (Stage 7 Combined).
+ * POST /student/apply/<drive_id>
+ */
+export async function applyToDrive(driveId) {
+  const response = await apiClient.post(`/student/apply/${driveId}`);
+  return response.data;
+}
+
+/**
+ * Fetch logged-in student's applications (Stage 7 Combined).
+ * GET /student/applications
+ */
+export async function getMyApplications() {
+  const response = await apiClient.get("/student/applications");
+  return response.data;
+}
+
 export async function getCompanyDrives() {
   const response = await apiClient.get("/company/drives");
   return response.data;
