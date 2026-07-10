@@ -301,7 +301,9 @@ export default {
         <router-link class="nav-link text-light active" to="/company/drives">
           Placement Drives
         </router-link>
-        <span class="nav-link disabled text-secondary">Applicants</span>
+        <router-link class="nav-link text-light" to="/company/applicants">
+          Applicants
+        </router-link>
         <span class="nav-link disabled text-secondary">Profile</span>
         <button
           type="button"
@@ -327,7 +329,7 @@ export default {
             </router-link>
           </li>
           <li class="nav-item">
-            <span class="nav-link disabled text-muted">Applicants</span>
+            <router-link class="nav-link" to="/company/applicants">Applicants</router-link>
           </li>
           <li class="nav-item">
             <span class="nav-link disabled text-muted">Profile</span>

@@ -3,7 +3,10 @@ Application Model
 
 Why this model exists:
 When a student applies to a placement drive, we need to record that application
-and track its status (Applied, Shortlisted, Selected, or Rejected).
+and track its status (Applied, Shortlisted, Interview, Selected, or Rejected).
+
+Stage 8: interview fields store schedule details when a company shortlists
+a student and moves them to the Interview stage.
 
 Relationship:
 - Each Application belongs to ONE Student (via student_id).
@@ -40,11 +43,16 @@ class Application(db.Model):
 
     application_date = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
-    # status can be: "Applied", "Shortlisted", "Selected", or "Rejected"
+    # Status flow: Applied → Shortlisted → Interview → Selected / Rejected
     status = db.Column(db.String(20), default="Applied", nullable=False)
 
     # Optional notes from admin or company about this application
     remarks = db.Column(db.Text, nullable=True)
+
+    # Interview schedule (Stage 8) — filled when company schedules an interview
+    interview_date = db.Column(db.Date, nullable=True)
+    interview_time = db.Column(db.String(10), nullable=True)   # e.g. "14:30"
+    interview_mode = db.Column(db.String(20), nullable=True)    # Online / Offline
 
     def __repr__(self):
         return f"<Application student={self.student_id} drive={self.drive_id}>"

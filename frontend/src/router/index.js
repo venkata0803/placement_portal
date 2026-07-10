@@ -20,6 +20,7 @@ import BrowsePlacementDrives from "../views/BrowsePlacementDrives.vue";
 import MyApplications from "../views/MyApplications.vue";
 import CompanyDashboard from "../views/CompanyDashboard.vue";
 import CompanyPlacementDrives from "../views/company/PlacementDrives.vue";
+import CompanyApplicants from "../views/company/CompanyApplicants.vue";
 
 // Define all routes for the application
 const routes = [
@@ -95,6 +96,12 @@ const routes = [
     path: "/company/drives",
     name: "CompanyPlacementDrives",
     component: CompanyPlacementDrives,
+    meta: { requiresCompany: true },
+  },
+  {
+    path: "/company/applicants",
+    name: "CompanyApplicants",
+    component: CompanyApplicants,
     meta: { requiresCompany: true },
   },
 ];

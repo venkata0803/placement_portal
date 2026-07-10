@@ -16,6 +16,10 @@ from models import Application, Company, PlacementDrive
 
 company_bp = Blueprint("company", __name__)
 
+# Allowed application statuses for company applicant management (Stage 8)
+ALLOWED_STATUSES = ["Applied", "Shortlisted", "Interview", "Selected", "Rejected"]
+ALLOWED_INTERVIEW_MODES = ["Online", "Offline"]
+
 
 def _get_current_company():
     """
@@ -173,6 +177,80 @@ def _get_owned_drive(company, drive_id):
         id=drive_id,
         company_id=company.id,
     ).first()
+
+
+def _get_owned_application(company, application_id):
+    """
+    Find an application that belongs to one of this company's drives.
+
+    Ownership rule: Application → PlacementDrive → company_id must match.
+    Returns the application, or None if not found / not owned.
+    """
+    return (
+        Application.query.join(PlacementDrive)
+        .filter(
+            Application.id == application_id,
+            PlacementDrive.company_id == company.id,
+        )
+        .first()
+    )
+
+
+def _format_application_row(app):
+    """
+    Build one applicant row for GET /company/drives/<drive_id>/applications.
+
+    Joins student + user data so the company can review each applicant.
+    """
+    student = app.student
+    user = student.user if student else None
+
+    return {
+        "id": app.id,
+        "student_name": student.full_name if student else "",
+        "email": user.email if user else "",
+        "branch": student.branch if student else "",
+        "cgpa": student.cgpa if student else None,
+        "year": student.year if student else None,
+        "skills": student.skills if student else "",
+        "resume_filename": student.resume_filename if student else "",
+        "status": app.status,
+        "applied_date": app.application_date.isoformat()
+        if app.application_date
+        else None,
+        "interview_date": app.interview_date.isoformat()
+        if app.interview_date
+        else None,
+        "interview_time": app.interview_time,
+        "interview_mode": app.interview_mode,
+    }
+
+
+def _validate_status_change(application, new_status):
+    """
+    Status flow rules (Stage 8):
+      - Rejected applications cannot be edited
+      - Selected cannot be changed back to Applied (or any earlier stage)
+      - Interview status is allowed only after Shortlisted
+    """
+    current_status = application.status
+
+    if current_status == "Rejected":
+        return False, "Rejected applications cannot be edited."
+
+    if current_status == "Selected" and new_status != "Selected":
+        return False, "Selected applications cannot be changed."
+
+    if current_status == "Selected" and new_status == "Applied":
+        return False, "Cannot change Selected back to Applied."
+
+    if new_status == "Interview" and current_status not in ("Shortlisted", "Interview"):
+        return (
+            False,
+            "Interview status is allowed only after the student is Shortlisted.",
+        )
+
+    return True, None
 
 
 @company_bp.route("/company/dashboard", methods=["GET"])
@@ -363,3 +441,140 @@ def close_company_drive(drive_id):
     db.session.commit()
 
     return jsonify({"message": "Placement drive closed successfully"}), 200
+
+
+# ---------- Stage 8: Company Applicant Management ----------
+
+
+@company_bp.route("/company/drives/<int:drive_id>/applications", methods=["GET"])
+@company_required
+def get_drive_applications(drive_id):
+    """
+    List applicants for one placement drive owned by the logged-in company.
+
+    Applicant flow:
+      1. Student applies to an approved drive → status = Applied
+      2. Company opens this page → sees all applications for that drive
+      3. Company shortlists, schedules interview, selects, or rejects
+    """
+    company = _get_current_company()
+    error_response, status_code = _check_company_approval(company)
+    if error_response:
+        return error_response, status_code
+
+    # Only the company that owns the drive can view its applicants
+    drive = _get_owned_drive(company, drive_id)
+    if not drive:
+        return jsonify({"message": "Placement drive not found"}), 404
+
+    applications = (
+        Application.query.filter_by(drive_id=drive_id)
+        .order_by(Application.application_date.desc())
+        .all()
+    )
+
+    applicant_list = [_format_application_row(app) for app in applications]
+    return jsonify(applicant_list), 200
+
+
+@company_bp.route("/company/application/<int:application_id>/status", methods=["PUT"])
+@company_required
+def update_application_status(application_id):
+    """
+    Update an applicant's status.
+
+    Allowed values: Applied, Shortlisted, Interview, Selected, Rejected
+    Only the company that owns the drive may update.
+    """
+    company = _get_current_company()
+    error_response, status_code = _check_company_approval(company)
+    if error_response:
+        return error_response, status_code
+
+    application = _get_owned_application(company, application_id)
+    if not application:
+        return jsonify({"message": "Application not found"}), 404
+
+    request_data = request.get_json(silent=True) or {}
+    new_status = request_data.get("status")
+
+    if not new_status:
+        return jsonify({"message": "status is required"}), 400
+
+    if new_status not in ALLOWED_STATUSES:
+        return jsonify({
+            "message": f"Invalid status. Allowed values: {', '.join(ALLOWED_STATUSES)}"
+        }), 400
+
+    is_valid, error_message = _validate_status_change(application, new_status)
+    if not is_valid:
+        return jsonify({"message": error_message}), 400
+
+    application.status = new_status
+    db.session.commit()
+
+    return jsonify({"message": "Application status updated successfully"}), 200
+
+
+@company_bp.route("/company/application/<int:application_id>/interview", methods=["PUT"])
+@company_required
+def schedule_application_interview(application_id):
+    """
+    Schedule or update interview details for a shortlisted applicant.
+
+    Interview flow:
+      1. Company shortlists the student (status = Shortlisted)
+      2. Company opens Interview modal → enters date, time, mode
+      3. Backend stores details and sets status = Interview
+
+    Validation: interview can be scheduled only after Shortlisted.
+    """
+    company = _get_current_company()
+    error_response, status_code = _check_company_approval(company)
+    if error_response:
+        return error_response, status_code
+
+    application = _get_owned_application(company, application_id)
+    if not application:
+        return jsonify({"message": "Application not found"}), 404
+
+    if application.status == "Rejected":
+        return jsonify({"message": "Rejected applications cannot be edited."}), 400
+
+    if application.status == "Selected":
+        return jsonify({"message": "Selected applications cannot be edited."}), 400
+
+    # Interview is allowed only after the student has been shortlisted
+    if application.status not in ("Shortlisted", "Interview"):
+        return jsonify({
+            "message": "Interview can be scheduled only after the student is Shortlisted."
+        }), 400
+
+    request_data = request.get_json(silent=True) or {}
+    interview_date_str = request_data.get("interview_date")
+    interview_time = request_data.get("interview_time")
+    interview_mode = request_data.get("interview_mode")
+
+    if not interview_date_str or not interview_time or not interview_mode:
+        return jsonify({
+            "message": "interview_date, interview_time, and interview_mode are required"
+        }), 400
+
+    if interview_mode not in ALLOWED_INTERVIEW_MODES:
+        return jsonify({
+            "message": f"interview_mode must be one of: {', '.join(ALLOWED_INTERVIEW_MODES)}"
+        }), 400
+
+    try:
+        interview_date = datetime.strptime(interview_date_str, "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return jsonify({"message": "interview_date must be YYYY-MM-DD"}), 400
+
+    application.interview_date = interview_date
+    application.interview_time = str(interview_time).strip()
+    application.interview_mode = interview_mode
+    application.status = "Interview"
+
+    db.session.commit()
+
+    return jsonify({"message": "Interview scheduled successfully"}), 200

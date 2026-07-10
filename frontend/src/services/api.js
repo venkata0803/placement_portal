@@ -203,6 +203,39 @@ export async function closePlacementDrive(driveId) {
   return response.data;
 }
 
+/**
+ * Fetch applicants for one placement drive (Stage 8).
+ * GET /company/drives/<drive_id>/applications
+ */
+export async function getDriveApplications(driveId) {
+  const response = await apiClient.get(`/company/drives/${driveId}/applications`);
+  return response.data;
+}
+
+/**
+ * Update an applicant's status (Stage 8).
+ * PUT /company/application/<id>/status
+ */
+export async function updateApplicationStatus(applicationId, status) {
+  const response = await apiClient.put(
+    `/company/application/${applicationId}/status`,
+    { status }
+  );
+  return response.data;
+}
+
+/**
+ * Schedule interview for a shortlisted applicant (Stage 8).
+ * PUT /company/application/<id>/interview
+ */
+export async function scheduleApplicationInterview(applicationId, interviewData) {
+  const response = await apiClient.put(
+    `/company/application/${applicationId}/interview`,
+    interviewData
+  );
+  return response.data;
+}
+
 // ---------- Admin approval APIs (Stage 4.2) ----------
 
 export async function fetchCompanies() {

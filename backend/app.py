@@ -48,6 +48,7 @@ def create_app():
 
         # SQLite create_all() does not add new columns to existing tables
         ensure_student_skills_column()
+        ensure_application_interview_columns()
 
         # Make sure resume upload directory exists
         os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
@@ -94,6 +95,37 @@ def ensure_student_skills_column():
         connection.execute(text("ALTER TABLE students ADD COLUMN skills VARCHAR(500)"))
         connection.commit()
     print("Added students.skills column")
+
+
+def ensure_application_interview_columns():
+    """
+    Stage 8: add interview columns to applications if the DB predates Stage 8.
+
+    SQLite create_all() only creates missing tables — it does not ALTER existing ones.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    if "applications" not in inspector.get_table_names():
+        return
+
+    column_names = [col["name"] for col in inspector.get_columns("applications")]
+
+    columns_to_add = [
+        ("interview_date", "DATE"),
+        ("interview_time", "VARCHAR(10)"),
+        ("interview_mode", "VARCHAR(20)"),
+    ]
+
+    with db.engine.connect() as connection:
+        for column_name, column_type in columns_to_add:
+            if column_name in column_names:
+                continue
+            connection.execute(
+                text(f"ALTER TABLE applications ADD COLUMN {column_name} {column_type}")
+            )
+            print(f"Added applications.{column_name} column")
+        connection.commit()
 
 
 def create_default_admin():
