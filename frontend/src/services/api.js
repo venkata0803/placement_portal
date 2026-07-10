@@ -34,6 +34,22 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
+/**
+ * Global 401 handler: clear session and redirect to Login.
+ */
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      clearAuthData();
+      if (!window.location.pathname.startsWith("/login")) {
+        window.location.href = "/login";
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 // ---------- Auth helper functions ----------
 
 export function saveAuthData(token, role, username) {
@@ -234,6 +250,18 @@ export async function scheduleApplicationInterview(applicationId, interviewData)
     interviewData
   );
   return response.data;
+}
+
+/**
+ * Download applicant resume PDF (Stage 9).
+ * GET /company/application/<id>/resume
+ */
+export async function downloadApplicationResume(applicationId) {
+  const response = await apiClient.get(
+    `/company/application/${applicationId}/resume`,
+    { responseType: "blob" }
+  );
+  return response;
 }
 
 // ---------- Admin approval APIs (Stage 4.2) ----------

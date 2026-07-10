@@ -6,7 +6,7 @@
  * Fetches data from GET /admin/dashboard using Axios on mount.
  */
 
-import { getAdminDashboard } from "../services/api.js";
+import { clearAuthData, getAdminDashboard, logout } from "../services/api.js";
 
 export default {
   name: "AdminDashboard",
@@ -65,6 +65,17 @@ export default {
       const date = new Date(dateString);
       return date.toLocaleDateString();
     },
+
+    async handleLogout() {
+      try {
+        await logout();
+      } catch (error) {
+        console.error("Logout error:", error);
+      }
+
+      clearAuthData();
+      this.$router.push("/login");
+    },
   },
 };
 </script>
@@ -74,7 +85,15 @@ export default {
     <!-- Top Navbar -->
     <nav class="navbar navbar-dark bg-dark px-3">
       <span class="navbar-brand mb-0 h1">Admin Dashboard</span>
-      <span class="text-light small">Placement Portal</span>
+      <div class="ms-auto">
+        <button
+          type="button"
+          class="btn btn-outline-light btn-sm"
+          @click="handleLogout"
+        >
+          Logout
+        </button>
+      </div>
     </nav>
 
     <div class="d-flex admin-layout">

@@ -19,6 +19,9 @@ class Config:
     # Secret key is used by Flask for sessions and security features
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
 
+    # Debug mode — gates development-only routes (/tables, /admin-check, test routes)
+    DEBUG = os.getenv("FLASK_DEBUG", "true").lower() in ("1", "true", "yes")
+
     # SQLite database connection string
     # sqlite:/// means the database file lives in the backend folder
     SQLALCHEMY_DATABASE_URI = os.getenv(

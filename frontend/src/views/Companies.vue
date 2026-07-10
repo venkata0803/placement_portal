@@ -8,9 +8,11 @@
  */
 
 import {
+  clearAuthData,
   fetchCompanies,
   approveCompany,
   rejectCompany,
+  logout,
 } from "../services/api.js";
 
 export default {
@@ -111,6 +113,17 @@ export default {
       }
       return new Date(dateString).toLocaleDateString();
     },
+
+    async handleLogout() {
+      try {
+        await logout();
+      } catch (error) {
+        console.error("Logout error:", error);
+      }
+
+      clearAuthData();
+      this.$router.push("/login");
+    },
   },
 };
 </script>
@@ -119,7 +132,15 @@ export default {
   <div class="admin-dashboard">
     <nav class="navbar navbar-dark bg-dark px-3">
       <span class="navbar-brand mb-0 h1">Admin Dashboard</span>
-      <span class="text-light small">Placement Portal</span>
+      <div class="ms-auto">
+        <button
+          type="button"
+          class="btn btn-outline-light btn-sm"
+          @click="handleLogout"
+        >
+          Logout
+        </button>
+      </div>
     </nav>
 
     <div class="d-flex admin-layout">

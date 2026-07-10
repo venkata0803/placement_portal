@@ -371,6 +371,9 @@ def _format_application_row(app):
         "company_name": company_name,
         "applied_date": app.application_date.isoformat() if app.application_date else None,
         "status": app.status,
+        "interview_date": app.interview_date.isoformat() if app.interview_date else None,
+        "interview_time": app.interview_time,
+        "interview_mode": app.interview_mode,
     }
 
 

@@ -6,8 +6,9 @@ Uses @company_required decorator for JWT role validation.
 """
 
 from datetime import datetime
+import os
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, send_from_directory
 from flask_jwt_extended import get_jwt_identity
 
 from decorators import company_required
@@ -127,6 +128,9 @@ def _validate_drive_data(data):
     except (TypeError, ValueError):
         return False, "eligible_year must be a number", None
 
+    if eligible_year < 1 or eligible_year > 4:
+        return False, "eligible_year must be between 1 and 4", None
+
     deadline_string = data.get("application_deadline")
     try:
         application_deadline = datetime.fromisoformat(deadline_string)
@@ -244,10 +248,10 @@ def _validate_status_change(application, new_status):
     if current_status == "Selected" and new_status == "Applied":
         return False, "Cannot change Selected back to Applied."
 
-    if new_status == "Interview" and current_status not in ("Shortlisted", "Interview"):
+    if new_status == "Interview":
         return (
             False,
-            "Interview status is allowed only after the student is Shortlisted.",
+            "Interview status requires scheduling interview details. Use the interview endpoint.",
         )
 
     return True, None
@@ -578,3 +582,44 @@ def schedule_application_interview(application_id):
     db.session.commit()
 
     return jsonify({"message": "Interview scheduled successfully"}), 200
+
+
+@company_bp.route("/company/application/<int:application_id>/resume", methods=["GET"])
+@company_required
+def download_application_resume(application_id):
+    """
+    Download a student's resume PDF for an application on this company's drive.
+
+    Security:
+      - Company must own the placement drive linked to the application
+      - Only PDF files stored in the upload folder are served
+    """
+    company = _get_current_company()
+    error_response, status_code = _check_company_approval(company)
+    if error_response:
+        return error_response, status_code
+
+    application = _get_owned_application(company, application_id)
+    if not application:
+        return jsonify({"message": "Application not found"}), 404
+
+    student = application.student
+    if not student or not student.resume_filename:
+        return jsonify({"message": "Resume not uploaded"}), 404
+
+    filename = student.resume_filename
+    if not filename.lower().endswith(".pdf"):
+        return jsonify({"message": "Only PDF resumes can be downloaded"}), 400
+
+    upload_folder = current_app.config["UPLOAD_FOLDER"]
+    file_path = os.path.join(upload_folder, filename)
+
+    if not os.path.isfile(file_path):
+        return jsonify({"message": "Resume file not found"}), 404
+
+    real_upload = os.path.realpath(upload_folder)
+    real_file = os.path.realpath(file_path)
+    if not real_file.startswith(real_upload + os.sep):
+        return jsonify({"message": "Invalid file path"}), 400
+
+    return send_from_directory(upload_folder, filename, as_attachment=True)

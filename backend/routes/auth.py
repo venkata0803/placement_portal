@@ -107,6 +107,12 @@ def register_student():
     except (TypeError, ValueError):
         return jsonify({"message": "year and cgpa must be valid numbers"}), 400
 
+    if cgpa < 0 or cgpa > 10:
+        return jsonify({"message": "CGPA must be between 0 and 10"}), 400
+
+    if year < 1 or year > 4:
+        return jsonify({"message": "Year must be between 1 and 4"}), 400
+
     # Step 5: Create User with hashed password (never store plain text)
     new_user = User(
         username=username,

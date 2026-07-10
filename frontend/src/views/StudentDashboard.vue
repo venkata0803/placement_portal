@@ -104,7 +104,9 @@ export default {
         <router-link class="nav-link text-light" to="/student/drives">
           Browse Drives
         </router-link>
-        <span class="nav-link disabled text-secondary">My Applications</span>
+        <router-link class="nav-link text-light" to="/student/applications">
+          My Applications
+        </router-link>
         <router-link class="nav-link text-light" to="/student/profile">Profile</router-link>
         <button
           type="button"
@@ -130,7 +132,9 @@ export default {
             </router-link>
           </li>
           <li class="nav-item">
-            <span class="nav-link disabled text-muted">My Applications</span>
+            <router-link class="nav-link" to="/student/applications">
+              My Applications
+            </router-link>
           </li>
           <li class="nav-item">
             <router-link class="nav-link" to="/student/profile">Profile</router-link>

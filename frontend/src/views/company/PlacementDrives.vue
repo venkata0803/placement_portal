@@ -533,15 +533,18 @@ export default {
 
                 <div class="col-md-6 mb-3">
                   <label for="eligibleYear" class="form-label">Eligible Year</label>
-                  <input
+                  <select
                     id="eligibleYear"
                     v-model="driveForm.eligible_year"
-                    type="number"
-                    min="1"
-                    max="5"
-                    class="form-control"
+                    class="form-select"
                     required
-                  />
+                  >
+                    <option value="" disabled>Select year</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                  </select>
                 </div>
               </div>
 
@@ -662,15 +665,18 @@ export default {
                   <label for="editEligibleYear" class="form-label">
                     Eligible Year
                   </label>
-                  <input
+                  <select
                     id="editEligibleYear"
                     v-model="driveForm.eligible_year"
-                    type="number"
-                    min="1"
-                    max="5"
-                    class="form-control"
+                    class="form-select"
                     required
-                  />
+                  >
+                    <option value="" disabled>Select year</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                  </select>
                 </div>
               </div>
 

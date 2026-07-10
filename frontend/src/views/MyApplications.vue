@@ -44,6 +44,15 @@ export default {
       return new Date(dateString).toLocaleDateString();
     },
 
+    formatInterviewDate(dateString) {
+      if (!dateString) return "Not Scheduled";
+      return new Date(dateString).toLocaleDateString();
+    },
+
+    formatInterviewField(value) {
+      return value || "Not Scheduled";
+    },
+
     statusBadgeClass(status) {
       if (status === "Selected") return "bg-success";
       if (status === "Rejected") return "bg-danger";
@@ -147,11 +156,14 @@ export default {
                   <th scope="col">Company</th>
                   <th scope="col">Applied Date</th>
                   <th scope="col">Current Status</th>
+                  <th scope="col">Interview Date</th>
+                  <th scope="col">Interview Time</th>
+                  <th scope="col">Interview Mode</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="applications.length === 0">
-                  <td colspan="4" class="text-center text-muted py-4">
+                  <td colspan="7" class="text-center text-muted py-4">
                     You have not applied to any drives yet.
                   </td>
                 </tr>
@@ -164,6 +176,9 @@ export default {
                       {{ app.status }}
                     </span>
                   </td>
+                  <td>{{ formatInterviewDate(app.interview_date) }}</td>
+                  <td>{{ formatInterviewField(app.interview_time) }}</td>
+                  <td>{{ formatInterviewField(app.interview_mode) }}</td>
                 </tr>
               </tbody>
             </table>

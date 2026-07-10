@@ -18,6 +18,7 @@
 
 import {
   clearAuthData,
+  downloadApplicationResume,
   getCompanyDrives,
   getDriveApplications,
   logout,
@@ -152,6 +153,35 @@ export default {
       this.profileApplicant = null;
     },
 
+    async downloadResume(applicant) {
+      this.actionError = null;
+
+      try {
+        const response = await downloadApplicationResume(applicant.id);
+        const blob = new Blob([response.data], { type: "application/pdf" });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = applicant.resume_filename || "resume.pdf";
+        link.click();
+        window.URL.revokeObjectURL(url);
+      } catch (err) {
+        if (err.response?.data instanceof Blob) {
+          const text = await err.response.data.text();
+          try {
+            const json = JSON.parse(text);
+            this.actionError = json.message || "Failed to download resume.";
+          } catch {
+            this.actionError = "Failed to download resume.";
+          }
+        } else {
+          this.actionError =
+            err.response?.data?.message ||
+            "Failed to download resume. Please try again.";
+        }
+      }
+    },
+
     // ---------- Status update ----------
 
     /**
@@ -168,6 +198,11 @@ export default {
     async handleStatusUpdate(applicant) {
       const newStatus = this.statusSelections[applicant.id];
       if (!newStatus || newStatus === applicant.status) {
+        return;
+      }
+
+      if (newStatus === "Interview") {
+        this.onStatusSelectionChange(applicant);
         return;
       }
 
@@ -188,6 +223,29 @@ export default {
         this.statusSelections[applicant.id] = applicant.status;
       } finally {
         this.submitting = false;
+      }
+    },
+
+    /**
+     * Selecting Interview opens the scheduling modal instead of a direct status update.
+     */
+    onStatusSelectionChange(applicant) {
+      const selected = this.statusSelections[applicant.id];
+
+      if (selected !== "Interview") {
+        return;
+      }
+
+      if (applicant.status === "Shortlisted") {
+        this.openInterviewModal(applicant);
+        this.statusSelections[applicant.id] = applicant.status;
+        return;
+      }
+
+      if (applicant.status !== "Interview") {
+        this.actionError =
+          "Student must be Shortlisted before scheduling an interview.";
+        this.statusSelections[applicant.id] = applicant.status;
       }
     },
 
@@ -468,6 +526,7 @@ export default {
 
           <div v-else class="card shadow-sm">
             <div class="card-body p-0">
+              <div class="table-responsive">
               <table class="table table-striped table-hover mb-0">
                 <thead class="table-light">
                   <tr>
@@ -496,7 +555,17 @@ export default {
                     <td class="text-truncate" style="max-width: 120px">
                       {{ app.skills || "-" }}
                     </td>
-                    <td>{{ app.resume_filename || "-" }}</td>
+                    <td>
+                      <button
+                        v-if="app.resume_filename"
+                        type="button"
+                        class="btn btn-sm btn-primary"
+                        @click="downloadResume(app)"
+                      >
+                        Download Resume
+                      </button>
+                      <span v-else>-</span>
+                    </td>
                     <td>{{ formatDate(app.applied_date) }}</td>
                     <td>
                       <span class="badge" :class="statusBadgeClass(app.status)">
@@ -518,6 +587,7 @@ export default {
                           class="form-select form-select-sm"
                           style="width: auto"
                           :disabled="isStatusLocked(app) || submitting"
+                          @change="onStatusSelectionChange(app)"
                         >
                           <option
                             v-for="status in statusOptions"
@@ -555,6 +625,7 @@ export default {
                   </tr>
                 </tbody>
               </table>
+              </div>
             </div>
           </div>
         </div>

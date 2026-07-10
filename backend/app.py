@@ -64,7 +64,8 @@ def create_app():
     from routes.student import student_bp
 
     app.register_blueprint(auth_bp)
-    app.register_blueprint(test_bp)
+    if app.config.get("DEBUG"):
+        app.register_blueprint(test_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(company_bp)
     app.register_blueprint(student_bp)
@@ -176,32 +177,34 @@ def register_routes(app):
         """
         return jsonify({"message": "Placement Portal Backend Running"})
 
-    @app.route("/tables", methods=["GET"])
-    def table_counts():
-        """
-        Return the total number of rows in each database table.
-        Useful to verify that models and tables were created correctly.
-        """
-        from models import User, Student, Company, PlacementDrive, Application
+    if app.config.get("DEBUG"):
 
-        return jsonify({
-            "users": User.query.count(),
-            "students": Student.query.count(),
-            "companies": Company.query.count(),
-            "placement_drives": PlacementDrive.query.count(),
-            "applications": Application.query.count(),
-        })
+        @app.route("/tables", methods=["GET"])
+        def table_counts():
+            """
+            Return the total number of rows in each database table.
+            Useful to verify that models and tables were created correctly.
+            """
+            from models import User, Student, Company, PlacementDrive, Application
 
-    @app.route("/admin-check", methods=["GET"])
-    def admin_check():
-        """
-        Check whether the default admin user exists in the database.
-        """
-        from models import User
+            return jsonify({
+                "users": User.query.count(),
+                "students": Student.query.count(),
+                "companies": Company.query.count(),
+                "placement_drives": PlacementDrive.query.count(),
+                "applications": Application.query.count(),
+            })
 
-        admin_exists = User.query.filter_by(username="admin").first() is not None
+        @app.route("/admin-check", methods=["GET"])
+        def admin_check():
+            """
+            Check whether the default admin user exists in the database.
+            """
+            from models import User
 
-        return jsonify({"admin_exists": admin_exists})
+            admin_exists = User.query.filter_by(username="admin").first() is not None
+
+            return jsonify({"admin_exists": admin_exists})
 
 
 # Create the app instance
@@ -211,4 +214,4 @@ app = create_app()
 # Run the development server when this file is executed directly
 if __name__ == "__main__":
     # debug=True enables auto-reload when code changes (development only)
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    app.run(debug=app.config.get("DEBUG", False), host="0.0.0.0", port=5000)
