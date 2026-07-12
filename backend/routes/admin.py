@@ -7,8 +7,15 @@ Uses @admin_required decorator for JWT role validation.
 
 from flask import Blueprint, jsonify
 
+from cache_helpers import (
+    CACHE_TIMEOUT,
+    admin_dashboard_key,
+    invalidate_admin_dashboard,
+    invalidate_after_drive_status_change,
+    invalidate_company_dashboard,
+)
 from decorators import admin_required
-from extensions import db
+from extensions import cache, db
 from models import Application, Company, PlacementDrive, Student, User
 
 admin_bp = Blueprint("admin", __name__)
@@ -78,12 +85,15 @@ def _get_recent_companies():
 
 @admin_bp.route("/admin/dashboard", methods=["GET"])
 @admin_required
+@cache.cached(timeout=CACHE_TIMEOUT, key_prefix=admin_dashboard_key)
 def get_dashboard():
     """
     Admin Dashboard API.
 
     Returns summary counts and recent student/company registrations.
     Only accessible by users with role "admin" in their JWT token.
+
+    Stage 9.1: response cached in Redis for 300 seconds.
     """
     counts = _get_total_counts()
 
@@ -167,6 +177,10 @@ def approve_company(company_id):
     company.approval_status = "Approved"
     db.session.commit()
 
+    # Stage 9.1: approval is not cached, but related dashboards must refresh
+    invalidate_admin_dashboard()
+    invalidate_company_dashboard(company.user_id)
+
     return jsonify({"message": "Company approved successfully"}), 200
 
 
@@ -180,6 +194,9 @@ def reject_company(company_id):
 
     company.approval_status = "Rejected"
     db.session.commit()
+
+    invalidate_admin_dashboard()
+    invalidate_company_dashboard(company.user_id)
 
     return jsonify({"message": "Company rejected successfully"}), 200
 
@@ -224,7 +241,14 @@ def _validate_drive_action(drive, new_status):
     return None, None
 
 
-# Stage 7.1 routes (exact paths requested)
+# Stage 7.1 drive approve/reject routes
+def _company_user_id_for_drive(drive):
+    """Return the owning company's user_id for cache invalidation."""
+    if drive and drive.company:
+        return drive.company.user_id
+    return None
+
+
 @admin_bp.route("/admin/drives/<int:drive_id>/approve", methods=["PUT"])
 @admin_required
 def approve_drive(drive_id):
@@ -241,6 +265,9 @@ def approve_drive(drive_id):
 
     drive.status = "Approved"
     db.session.commit()
+
+    # Stage 9.1: drive appears in student search / dashboards
+    invalidate_after_drive_status_change(_company_user_id_for_drive(drive))
 
     return jsonify({"message": "Placement drive approved successfully"}), 200
 
@@ -262,6 +289,8 @@ def reject_drive(drive_id):
     drive.status = "Rejected"
     db.session.commit()
 
+    invalidate_after_drive_status_change(_company_user_id_for_drive(drive))
+
     return jsonify({"message": "Placement drive rejected successfully"}), 200
 
 
@@ -275,6 +304,7 @@ def approve_drive_legacy(drive_id):
         return error_response, status_code
     drive.status = "Approved"
     db.session.commit()
+    invalidate_after_drive_status_change(_company_user_id_for_drive(drive))
     return jsonify({"message": "Placement drive approved successfully"}), 200
 
 
@@ -287,4 +317,41 @@ def reject_drive_legacy(drive_id):
         return error_response, status_code
     drive.status = "Rejected"
     db.session.commit()
+    invalidate_after_drive_status_change(_company_user_id_for_drive(drive))
     return jsonify({"message": "Placement drive rejected successfully"}), 200
+
+
+@admin_bp.route("/admin/test-reminder", methods=["POST"])
+@admin_required
+def test_reminder():
+    """
+    Stage 9.3: immediately queue the daily reminder Celery task.
+
+    Admin only. Does not wait for emails to finish — returns task id/status.
+    """
+    from tasks import send_daily_reminders
+
+    async_result = send_daily_reminders.delay()
+
+    return jsonify({
+        "task_id": async_result.id,
+        "status": async_result.status,
+    }), 200
+
+
+@admin_bp.route("/admin/test-monthly-report", methods=["POST"])
+@admin_required
+def test_monthly_report():
+    """
+    Stage 9.4: immediately queue the monthly placement report Celery task.
+
+    Admin only. Returns task id/status without waiting for email to finish.
+    """
+    from tasks import generate_monthly_report
+
+    async_result = generate_monthly_report.delay()
+
+    return jsonify({
+        "task_id": async_result.id,
+        "status": async_result.status,
+    }), 200

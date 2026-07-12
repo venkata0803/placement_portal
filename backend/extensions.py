@@ -11,6 +11,8 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
+from flask_caching import Cache
+from flask_mail import Mail
 
 # Database ORM - used to define models and run queries
 db = SQLAlchemy()
@@ -23,3 +25,9 @@ cors = CORS()
 
 # JSON Web Token manager - used for login/authentication (later)
 jwt = JWTManager()
+
+# Redis cache (Stage 9.1) — stores dashboard / search responses for 300 seconds
+cache = Cache()
+
+# Email sender (Stage 9.3) — used by daily reminder Celery task
+mail = Mail()

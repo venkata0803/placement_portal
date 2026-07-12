@@ -14,6 +14,7 @@ APIs:
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required
 
+from cache_helpers import invalidate_admin_dashboard
 from extensions import db
 from models import Company, Student, User
 
@@ -137,6 +138,9 @@ def register_student():
     db.session.add(new_student)
     db.session.commit()
 
+    # Stage 9.1: register is not cached; admin dashboard counts must refresh
+    invalidate_admin_dashboard()
+
     return jsonify({"message": "Student registered successfully"}), 201
 
 
@@ -207,6 +211,9 @@ def register_company():
     db.session.add(new_user)
     db.session.add(new_company)
     db.session.commit()
+
+    # Stage 9.1: register is not cached; admin dashboard counts must refresh
+    invalidate_admin_dashboard()
 
     return jsonify({"message": "Company registered successfully"}), 201
 

@@ -264,6 +264,63 @@ export async function downloadApplicationResume(applicationId) {
   return response;
 }
 
+/**
+ * Stage 9.5: queue student applications CSV export.
+ * POST /student/export
+ */
+export async function requestStudentExport() {
+  const response = await apiClient.post("/student/export");
+  return response.data;
+}
+
+/**
+ * Stage 9.5: download a student CSV export file.
+ * GET /student/export/download/<filename>
+ */
+export async function downloadStudentExport(filename) {
+  const response = await apiClient.get(
+    `/student/export/download/${filename}`,
+    { responseType: "blob" }
+  );
+  return response;
+}
+
+/**
+ * Stage 9.5: queue company drive applicants CSV export.
+ * POST /company/export/<drive_id>
+ */
+export async function requestCompanyExport(driveId) {
+  const response = await apiClient.post(`/company/export/${driveId}`);
+  return response.data;
+}
+
+/**
+ * Stage 9.5: download a company CSV export file.
+ * GET /company/export/download/<filename>
+ */
+export async function downloadCompanyExport(filename) {
+  const response = await apiClient.get(
+    `/company/export/download/${filename}`,
+    { responseType: "blob" }
+  );
+  return response;
+}
+
+/**
+ * Helper: trigger a browser file download from an Axios blob response.
+ */
+export function saveBlobDownload(response, filename) {
+  const blob = new Blob([response.data], { type: "text/csv" });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 // ---------- Admin approval APIs (Stage 4.2) ----------
 
 export async function fetchCompanies() {

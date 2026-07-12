@@ -10,9 +10,20 @@ import os
 
 from flask import Blueprint, current_app, jsonify, request, send_from_directory
 from flask_jwt_extended import get_jwt_identity
+from werkzeug.utils import secure_filename
 
+from cache_helpers import (
+    CACHE_TIMEOUT,
+    company_dashboard_key,
+    invalidate_admin_dashboard,
+    invalidate_after_drive_status_change,
+    invalidate_all_student_dashboards,
+    invalidate_company_dashboard,
+    invalidate_student_dashboard,
+    invalidate_student_drives,
+)
 from decorators import company_required
-from extensions import db
+from extensions import cache, db
 from models import Application, Company, PlacementDrive
 
 company_bp = Blueprint("company", __name__)
@@ -259,6 +270,7 @@ def _validate_status_change(application, new_status):
 
 @company_bp.route("/company/dashboard", methods=["GET"])
 @company_required
+@cache.cached(timeout=CACHE_TIMEOUT, key_prefix=company_dashboard_key)
 def get_dashboard():
     """
     Company Dashboard API.
@@ -269,6 +281,8 @@ def get_dashboard():
       3. If checks pass, this function runs and returns dashboard data
 
     Returns company profile info and summary counts for the logged-in company.
+
+    Stage 9.1: response cached in Redis for 300 seconds (per company user).
     """
     company = _get_current_company()
 
@@ -357,6 +371,10 @@ def create_company_drive():
     db.session.add(new_drive)
     db.session.commit()
 
+    # Stage 9.1: new Pending drive changes admin + company dashboard counts
+    invalidate_admin_dashboard()
+    invalidate_company_dashboard(company.user_id)
+
     return jsonify({"message": "Placement drive created successfully"}), 201
 
 
@@ -409,6 +427,11 @@ def update_company_drive(drive_id):
 
     db.session.commit()
 
+    # Stage 9.1: Approved drives appear in student search — refresh those caches
+    if drive.status == "Approved":
+        invalidate_student_drives()
+        invalidate_all_student_dashboards()
+
     return jsonify({"message": "Placement drive updated successfully"}), 200
 
 
@@ -443,6 +466,9 @@ def close_company_drive(drive_id):
 
     drive.status = "Closed"
     db.session.commit()
+
+    # Stage 9.1: closed drives leave student search / dashboards
+    invalidate_after_drive_status_change(company.user_id)
 
     return jsonify({"message": "Placement drive closed successfully"}), 200
 
@@ -517,6 +543,10 @@ def update_application_status(application_id):
     application.status = new_status
     db.session.commit()
 
+    # Stage 9.1: student dashboard selected/rejected counts may change
+    if application.student:
+        invalidate_student_dashboard(application.student.user_id)
+
     return jsonify({"message": "Application status updated successfully"}), 200
 
 
@@ -581,6 +611,10 @@ def schedule_application_interview(application_id):
 
     db.session.commit()
 
+    # Stage 9.1: student application status changed (dashboard stats)
+    if application.student:
+        invalidate_student_dashboard(application.student.user_id)
+
     return jsonify({"message": "Interview scheduled successfully"}), 200
 
 
@@ -623,3 +657,81 @@ def download_application_resume(application_id):
         return jsonify({"message": "Invalid file path"}), 400
 
     return send_from_directory(upload_folder, filename, as_attachment=True)
+
+
+# ---------- Stage 9.5: Async CSV Export ----------
+
+
+@company_bp.route("/company/export/<int:drive_id>", methods=["POST"])
+@company_required
+def export_drive_applicants(drive_id):
+    """
+    POST /company/export/<drive_id>
+
+    Queue a Celery job that writes applicants for one owned drive to CSV.
+    Returns task_id, status, and the filename that will be created.
+    """
+    company = _get_current_company()
+    error_response, status_code = _check_company_approval(company)
+    if error_response:
+        return error_response, status_code
+
+    # Security: company may export only its own drives
+    drive = _get_owned_drive(company, drive_id)
+    if not drive:
+        return jsonify({"message": "Placement drive not found"}), 404
+
+    from services.export_service import make_company_drive_filename
+    from tasks import export_company_csv
+
+    filename = make_company_drive_filename(drive.id)
+    async_result = export_company_csv.delay(drive.id, filename)
+
+    return jsonify({
+        "task_id": async_result.id,
+        "status": async_result.status,
+        "filename": filename,
+    }), 200
+
+
+@company_bp.route("/company/export/download/<path:filename>", methods=["GET"])
+@company_required
+def download_company_export(filename):
+    """
+    GET /company/export/download/<filename>
+
+    Download a CSV only if it belongs to a drive owned by this company.
+    Filename must look like: company_drive_<drive_id>_....csv
+    """
+    company = _get_current_company()
+    error_response, status_code = _check_company_approval(company)
+    if error_response:
+        return error_response, status_code
+
+    safe_name = secure_filename(filename)
+    if safe_name != filename or not safe_name.endswith(".csv"):
+        return jsonify({"message": "Invalid filename"}), 400
+
+    from services.export_service import parse_drive_id_from_company_filename
+
+    drive_id = parse_drive_id_from_company_filename(safe_name)
+    if drive_id is None:
+        return jsonify({"message": "Invalid export filename"}), 400
+
+    # Ownership: drive must belong to this company
+    drive = _get_owned_drive(company, drive_id)
+    if not drive:
+        return jsonify({"message": "You can only download exports for your own drives"}), 403
+
+    export_folder = current_app.config["EXPORT_FOLDER"]
+    file_path = os.path.join(export_folder, safe_name)
+
+    if not os.path.isfile(file_path):
+        return jsonify({"message": "Export not ready yet"}), 404
+
+    real_export = os.path.realpath(export_folder)
+    real_file = os.path.realpath(file_path)
+    if not real_file.startswith(real_export + os.sep):
+        return jsonify({"message": "Invalid file path"}), 400
+
+    return send_from_directory(export_folder, safe_name, as_attachment=True)

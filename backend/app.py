@@ -15,7 +15,7 @@ import os
 
 from flask import Flask, jsonify
 from config import Config
-from extensions import db, migrate, cors, jwt
+from extensions import db, migrate, cors, jwt, cache, mail
 
 
 def create_app():
@@ -37,6 +37,8 @@ def create_app():
     migrate.init_app(app, db)  # Connect Flask-Migrate to the app and database
     cors.init_app(app)     # Enable CORS for all routes
     jwt.init_app(app)      # Enable JWT support
+    cache.init_app(app)    # Stage 9.1: Redis caching (see Config.CACHE_*)
+    mail.init_app(app)     # Stage 9.3: email for daily reminders
 
     # Step 4: Create database tables, upload folder, and default admin user
     with app.app_context():
@@ -50,8 +52,9 @@ def create_app():
         ensure_student_skills_column()
         ensure_application_interview_columns()
 
-        # Make sure resume upload directory exists
+        # Make sure resume upload and CSV export directories exist
         os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+        os.makedirs(app.config["EXPORT_FOLDER"], exist_ok=True)
 
         # Create the default admin account on first run
         create_default_admin()
@@ -176,6 +179,26 @@ def register_routes(app):
         Visit http://localhost:5000/ in a browser or use curl.
         """
         return jsonify({"message": "Placement Portal Backend Running"})
+
+    @app.route("/test-celery", methods=["GET"])
+    def test_celery():
+        """
+        Stage 9.2: trigger the demo Celery task.
+
+        Flow:
+          1. hello_task.delay() sends the job to Redis (broker)
+          2. The Celery worker picks it up and runs hello_task()
+          3. The result is stored in Redis (backend)
+          4. We return the task id and current status immediately
+        """
+        from tasks import hello_task
+
+        async_result = hello_task.delay()
+
+        return jsonify({
+            "task_id": async_result.id,
+            "status": async_result.status,
+        }), 200
 
     if app.config.get("DEBUG"):
 

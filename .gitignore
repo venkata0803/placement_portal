@@ -46,6 +46,11 @@ instance/
 dump.rdb
 *.rdb
 
+# Celery Beat schedule file (Stage 9.3)
+celerybeat-schedule
+celerybeat-schedule.*
+celerybeat.pid
+
 # Node / Vue
 node_modules/
 frontend/dist/
@@ -78,4 +83,8 @@ htmlcov/
 backend/uploads/resumes/*
 !backend/uploads/resumes/.gitkeep
 !backend/uploads/resumes/.gitignore
+
+# CSV exports (Stage 9.5) — keep folder, ignore generated CSV files
+backend/exports/*
+!backend/exports/.gitignore
 

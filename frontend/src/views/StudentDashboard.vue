@@ -1,6 +1,6 @@
 <script>
 /**
- * StudentDashboard.vue - Student Dashboard (Stage 6.1)
+ * StudentDashboard.vue - Student Dashboard (Stage 6.1 + 9.5)
  *
  * Frontend Flow
  * -------------
@@ -8,15 +8,16 @@
  * 2. On mount, fetchDashboardData() calls GET /student/dashboard via Axios
  * 3. JWT token is attached automatically by the Axios interceptor in api.js
  * 4. Response data is stored in component state and shown in cards + info section
- *
- * Dashboard, Profile, and Logout are active.
- * Browse Drives and My Applications are disabled placeholders.
+ * 5. Stage 9.5: Export Applications queues a Celery CSV job, then downloads the file
  */
 
 import {
   clearAuthData,
+  downloadStudentExport,
   getStudentDashboard,
   logout,
+  requestStudentExport,
+  saveBlobDownload,
 } from "../services/api.js";
 
 export default {
@@ -38,6 +39,10 @@ export default {
       appliedDrives: 0,
       selectedCount: 0,
       rejectedCount: 0,
+      // Stage 9.5 CSV export UI state
+      exporting: false,
+      exportMessage: null,
+      exportError: null,
     };
   },
 
@@ -73,6 +78,53 @@ export default {
           "Failed to load dashboard data. Please try again.";
       } finally {
         this.loading = false;
+      }
+    },
+
+    /**
+     * Wait until the Celery worker has written the CSV, then download it.
+     * Polls GET /student/export/download/<filename> a few times.
+     */
+    async waitAndDownloadStudentCsv(filename) {
+      const maxAttempts = 15;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          const response = await downloadStudentExport(filename);
+          saveBlobDownload(response, filename);
+          return true;
+        } catch (err) {
+          // 404 = file not ready yet — wait and retry
+          if (err.response?.status === 404 && attempt < maxAttempts) {
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            continue;
+          }
+          throw err;
+        }
+      }
+      return false;
+    },
+
+    /**
+     * Stage 9.5: Export Applications button handler.
+     * 1. POST /student/export → get task_id + filename
+     * 2. Show spinner while Celery writes the CSV
+     * 3. Download the file and show a success message
+     */
+    async handleExportApplications() {
+      this.exporting = true;
+      this.exportMessage = null;
+      this.exportError = null;
+
+      try {
+        const data = await requestStudentExport();
+        await this.waitAndDownloadStudentCsv(data.filename);
+        this.exportMessage = `Export ready: ${data.filename}`;
+      } catch (err) {
+        this.exportError =
+          err.response?.data?.message ||
+          "Failed to export applications. Is the Celery worker running?";
+      } finally {
+        this.exporting = false;
       }
     },
 
@@ -153,7 +205,29 @@ export default {
 
       <!-- Main Content -->
       <main class="flex-grow-1 p-4">
-        <h2 class="mb-4">Overview</h2>
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+          <h2 class="mb-0">Overview</h2>
+          <button
+            type="button"
+            class="btn btn-outline-primary"
+            :disabled="loading || exporting"
+            @click="handleExportApplications"
+          >
+            <span
+              v-if="exporting"
+              class="spinner-border spinner-border-sm me-2"
+              role="status"
+            ></span>
+            {{ exporting ? "Exporting..." : "Export Applications" }}
+          </button>
+        </div>
+
+        <div v-if="exportMessage" class="alert alert-success" role="alert">
+          {{ exportMessage }}
+        </div>
+        <div v-if="exportError" class="alert alert-danger" role="alert">
+          {{ exportError }}
+        </div>
 
         <!-- Loading State -->
         <div v-if="loading" class="text-center py-5">

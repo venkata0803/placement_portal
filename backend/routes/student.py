@@ -23,12 +23,21 @@ import os
 import uuid
 from datetime import datetime
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, send_from_directory
 from flask_jwt_extended import get_jwt_identity
 from werkzeug.utils import secure_filename
 
+from cache_helpers import (
+    CACHE_TIMEOUT,
+    invalidate_admin_dashboard,
+    invalidate_company_dashboard,
+    invalidate_student_dashboard,
+    invalidate_student_drives,
+    student_dashboard_key,
+    student_drives_key,
+)
 from decorators import student_required
-from extensions import db
+from extensions import cache, db
 from models import Application, Company, PlacementDrive, Student
 
 student_bp = Blueprint("student", __name__)
@@ -234,6 +243,7 @@ def _deadline_has_passed(drive):
 
 @student_bp.route("/student/drives", methods=["GET"])
 @student_required
+@cache.cached(timeout=CACHE_TIMEOUT, key_prefix=student_drives_key)
 def browse_approved_drives():
     """
     GET /student/drives (Stage 7.2)
@@ -251,6 +261,10 @@ def browse_approved_drives():
       - Returns ONLY drives where status == "Approved"
       - Sorted by newest first (created_at DESC)
       - Also returns already_applied so the UI can disable Apply
+
+    Stage 9.1: cached in Redis for 300 seconds.
+    This endpoint is also the company / job search API
+    (query params company_name, job_title, branch, year, minimum_cgpa).
     """
     student = _get_current_student()
     if not student:
@@ -357,6 +371,13 @@ def apply_to_drive(drive_id):
     db.session.add(application)
     db.session.commit()
 
+    # Stage 9.1: apply itself is not cached; refresh related dashboards / search
+    invalidate_admin_dashboard()
+    invalidate_student_dashboard(student.user_id)
+    invalidate_student_drives()
+    if drive.company:
+        invalidate_company_dashboard(drive.company.user_id)
+
     return jsonify({"message": "Application submitted successfully"}), 201
 
 
@@ -407,11 +428,14 @@ def get_my_applications():
 
 @student_bp.route("/student/dashboard", methods=["GET"])
 @student_required
+@cache.cached(timeout=CACHE_TIMEOUT, key_prefix=student_dashboard_key)
 def get_dashboard():
     """
     GET /student/dashboard
 
     Returns student profile + overview counts for the Student Dashboard.
+
+    Stage 9.1: response cached in Redis for 300 seconds (per student user).
     """
     student = _get_current_student()
     if not student:
@@ -484,6 +508,10 @@ def update_profile():
 
     db.session.commit()
 
+    # Stage 9.1: dashboard shows name / CGPA from profile
+    invalidate_student_dashboard(student.user_id)
+    invalidate_admin_dashboard()
+
     return jsonify({
         "message": "Profile updated successfully",
         "profile": _profile_to_dict(student),
@@ -533,7 +561,76 @@ def upload_resume():
     student.resume_filename = unique_name
     db.session.commit()
 
+    # Stage 9.1: dashboard shows resume_uploaded Yes/No
+    invalidate_student_dashboard(student.user_id)
+
     return jsonify({
         "message": "Resume uploaded successfully",
         "resume_filename": unique_name,
     }), 200
+
+
+# ---------- Stage 9.5: Async CSV Export ----------
+
+
+@student_bp.route("/student/export", methods=["POST"])
+@student_required
+def export_applications():
+    """
+    POST /student/export
+
+    Queue a Celery job that writes this student's applications to CSV.
+    Returns task_id, status, and the filename that will be created.
+    """
+    student = _get_current_student()
+    if not student:
+        return jsonify({"message": "Student profile not found"}), 404
+
+    from services.export_service import make_student_filename
+    from tasks import export_student_csv
+
+    filename = make_student_filename(student.id)
+    async_result = export_student_csv.delay(student.id, filename)
+
+    return jsonify({
+        "task_id": async_result.id,
+        "status": async_result.status,
+        "filename": filename,
+    }), 200
+
+
+@student_bp.route("/student/export/download/<path:filename>", methods=["GET"])
+@student_required
+def download_student_export(filename):
+    """
+    GET /student/export/download/<filename>
+
+    Download a CSV only if it belongs to the logged-in student.
+    Filename must look like: student_<student_id>_....csv
+    """
+    student = _get_current_student()
+    if not student:
+        return jsonify({"message": "Student profile not found"}), 404
+
+    # Block path tricks (../ etc.)
+    safe_name = secure_filename(filename)
+    if safe_name != filename or not safe_name.endswith(".csv"):
+        return jsonify({"message": "Invalid filename"}), 400
+
+    # Ownership: only this student's exports
+    expected_prefix = f"student_{student.id}_"
+    if not safe_name.startswith(expected_prefix):
+        return jsonify({"message": "You can only download your own exports"}), 403
+
+    export_folder = current_app.config["EXPORT_FOLDER"]
+    file_path = os.path.join(export_folder, safe_name)
+
+    if not os.path.isfile(file_path):
+        return jsonify({"message": "Export not ready yet"}), 404
+
+    real_export = os.path.realpath(export_folder)
+    real_file = os.path.realpath(file_path)
+    if not real_file.startswith(real_export + os.sep):
+        return jsonify({"message": "Invalid file path"}), 400
+
+    return send_from_directory(export_folder, safe_name, as_attachment=True)

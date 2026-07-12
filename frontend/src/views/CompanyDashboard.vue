@@ -1,18 +1,21 @@
 <script>
 /**
- * CompanyDashboard.vue - Company Dashboard (Stage 5.1)
+ * CompanyDashboard.vue - Company Dashboard (Stage 5.1 + 9.5)
  *
  * Frontend flow:
  * 1. Router guard checks user is logged in with role "company"
- * 2. On mount, fetchDashboardData() calls GET /company/dashboard via Axios
- * 3. JWT token is attached automatically by the Axios interceptor in api.js
- * 4. Response data is stored in component state and shown in cards + info section
+ * 2. On mount, fetch dashboard + placement drives
+ * 3. Stage 9.5: each drive has Export Applicants (Celery CSV)
  */
 
 import {
   clearAuthData,
+  downloadCompanyExport,
   getCompanyDashboard,
+  getCompanyDrives,
   logout,
+  requestCompanyExport,
+  saveBlobDownload,
 } from "../services/api.js";
 
 export default {
@@ -31,6 +34,11 @@ export default {
       approvedDrives: 0,
       pendingDrives: 0,
       totalApplications: 0,
+      // Stage 9.5: drives list for Export Applicants buttons
+      drives: [],
+      exportingDriveId: null,
+      exportMessage: null,
+      exportError: null,
     };
   },
 
@@ -40,7 +48,7 @@ export default {
 
   methods: {
     /**
-     * Fetch company dashboard data from the backend API.
+     * Fetch company dashboard summary and the company's placement drives.
      */
     async fetchDashboardData() {
       this.loading = true;
@@ -58,12 +66,62 @@ export default {
         this.approvedDrives = data.approved_drives;
         this.pendingDrives = data.pending_drives;
         this.totalApplications = data.total_applications;
+
+        // Load drives so each row can show Export Applicants
+        try {
+          this.drives = await getCompanyDrives();
+        } catch (driveErr) {
+          // Company may still be Pending — dashboard still shows without drives
+          this.drives = [];
+        }
       } catch (err) {
         this.error =
           err.response?.data?.message ||
           "Failed to load dashboard data. Please try again.";
       } finally {
         this.loading = false;
+      }
+    },
+
+    /**
+     * Poll until Celery finishes writing the CSV, then download it.
+     */
+    async waitAndDownloadCompanyCsv(filename) {
+      const maxAttempts = 15;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          const response = await downloadCompanyExport(filename);
+          saveBlobDownload(response, filename);
+          return true;
+        } catch (err) {
+          if (err.response?.status === 404 && attempt < maxAttempts) {
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            continue;
+          }
+          throw err;
+        }
+      }
+      return false;
+    },
+
+    /**
+     * Stage 9.5: Export Applicants for one placement drive.
+     */
+    async handleExportApplicants(drive) {
+      this.exportingDriveId = drive.id;
+      this.exportMessage = null;
+      this.exportError = null;
+
+      try {
+        const data = await requestCompanyExport(drive.id);
+        await this.waitAndDownloadCompanyCsv(data.filename);
+        this.exportMessage = `Export ready for "${drive.title || drive.job_title}": ${data.filename}`;
+      } catch (err) {
+        this.exportError =
+          err.response?.data?.message ||
+          "Failed to export applicants. Is the Celery worker running?";
+      } finally {
+        this.exportingDriveId = null;
       }
     },
 
@@ -129,6 +187,13 @@ export default {
       <main class="flex-grow-1 p-4">
         <h2 class="mb-4">Overview</h2>
 
+        <div v-if="exportMessage" class="alert alert-success" role="alert">
+          {{ exportMessage }}
+        </div>
+        <div v-if="exportError" class="alert alert-danger" role="alert">
+          {{ exportError }}
+        </div>
+
         <!-- Loading State -->
         <div v-if="loading" class="text-center py-5">
           <div class="spinner-border text-primary" role="status">
@@ -184,7 +249,7 @@ export default {
           </div>
 
           <!-- Company Information -->
-          <div class="card shadow-sm">
+          <div class="card shadow-sm mb-4">
             <div class="card-header">
               <h5 class="mb-0">Company Information</h5>
             </div>
@@ -217,6 +282,56 @@ export default {
                   </span>
                 </dd>
               </dl>
+            </div>
+          </div>
+
+          <!-- Stage 9.5: Export Applicants per placement drive -->
+          <div class="card shadow-sm">
+            <div class="card-header">
+              <h5 class="mb-0">Export Applicants</h5>
+            </div>
+            <div class="card-body p-0">
+              <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Drive Title</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="drives.length === 0">
+                      <td colspan="3" class="text-center text-muted">
+                        No placement drives available to export.
+                      </td>
+                    </tr>
+                    <tr v-for="drive in drives" :key="drive.id">
+                      <td>{{ drive.title || drive.job_title }}</td>
+                      <td>{{ drive.status }}</td>
+                      <td>
+                        <button
+                          type="button"
+                          class="btn btn-sm btn-outline-primary"
+                          :disabled="exportingDriveId !== null"
+                          @click="handleExportApplicants(drive)"
+                        >
+                          <span
+                            v-if="exportingDriveId === drive.id"
+                            class="spinner-border spinner-border-sm me-1"
+                            role="status"
+                          ></span>
+                          {{
+                            exportingDriveId === drive.id
+                              ? "Exporting..."
+                              : "Export Applicants"
+                          }}
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
