@@ -9,7 +9,9 @@ so secrets are not hard-coded in source code.
 import os
 from dotenv import load_dotenv
 
-# Load variables from .env file into os.environ
+# Prefer backend/.env (MailHog defaults); then any .env found from cwd
+_backend_dir = os.path.abspath(os.path.dirname(__file__))
+load_dotenv(os.path.join(_backend_dir, ".env"))
 load_dotenv()
 
 
@@ -53,17 +55,28 @@ class Config:
         "CELERY_BEAT_TEST_MODE", "false"
     ).lower() in ("1", "true", "yes")
 
-    # Stage 9.3: Flask-Mail settings (Gmail app password works well for demos)
-    MAIL_SERVER = os.getenv("MAIL_SERVER", "smtp.gmail.com")
-    MAIL_PORT = int(os.getenv("MAIL_PORT", "587"))
-    MAIL_USE_TLS = os.getenv("MAIL_USE_TLS", "true").lower() in ("1", "true", "yes")
-    MAIL_USERNAME = os.getenv("MAIL_USERNAME", "")
-    MAIL_PASSWORD = os.getenv("MAIL_PASSWORD", "")
+    # Stage 9.3: reminder windows (scheduled Beat jobs always use these)
+    # Drive deadline reminders: application_deadline within REMINDER_DAYS from now
+    # Interview reminders: interview datetime within INTERVIEW_REMINDER_DAYS from now
+    REMINDER_DAYS = int(os.getenv("REMINDER_DAYS", "2"))
+    INTERVIEW_REMINDER_DAYS = int(os.getenv("INTERVIEW_REMINDER_DAYS", "1"))
+
+    # Stage 9.3: Flask-Mail → MailHog (local SMTP catcher for demos)
+    # No real email account or authentication required.
+    MAIL_SERVER = os.getenv("MAIL_SERVER", "localhost")
+    MAIL_PORT = int(os.getenv("MAIL_PORT", "1025"))
+    MAIL_USE_TLS = os.getenv("MAIL_USE_TLS", "false").lower() in ("1", "true", "yes")
+    MAIL_USE_SSL = os.getenv("MAIL_USE_SSL", "false").lower() in ("1", "true", "yes")
+    # Empty env values become None so Flask-Mail does not attempt SMTP AUTH
+    _mail_username = os.getenv("MAIL_USERNAME", "")
+    _mail_password = os.getenv("MAIL_PASSWORD", "")
+    MAIL_USERNAME = _mail_username or None
+    MAIL_PASSWORD = _mail_password or None
     MAIL_DEFAULT_SENDER = os.getenv(
         "MAIL_DEFAULT_SENDER",
-        MAIL_USERNAME or "noreply@placementportal.com",
+        "placement-portal@localhost",
     )
-    # true = do not contact SMTP (useful when testing without real credentials)
+    # true = do not contact SMTP (dry-run only; keep false so MailHog receives mail)
     MAIL_SUPPRESS_SEND = os.getenv("MAIL_SUPPRESS_SEND", "false").lower() in (
         "1",
         "true",

@@ -247,10 +247,18 @@ def login():
     if not user.is_active:
         return jsonify({"message": "Account is disabled"}), 403
 
-    # Step 4b: Company users must be approved before they can access the dashboard
+    # Step 4a: Blacklisted students cannot login
+    if user.role == "student":
+        student = Student.query.filter_by(user_id=user.id).first()
+        if student and student.is_blacklisted:
+            return jsonify({"message": "Your account has been blacklisted."}), 403
+
+    # Step 4b: Company users must be approved and not blacklisted
     if user.role == "company":
         company = Company.query.filter_by(user_id=user.id).first()
         if company:
+            if company.is_blacklisted:
+                return jsonify({"message": "Your company has been blacklisted."}), 403
             if company.approval_status == "Rejected":
                 return jsonify({"message": "Company registration rejected."}), 403
             if company.approval_status != "Approved":

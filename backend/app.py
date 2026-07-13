@@ -50,6 +50,8 @@ def create_app():
 
         # SQLite create_all() does not add new columns to existing tables
         ensure_student_skills_column()
+        ensure_student_blacklist_column()
+        ensure_company_profile_columns()
         ensure_application_interview_columns()
 
         # Make sure resume upload and CSV export directories exist
@@ -99,6 +101,59 @@ def ensure_student_skills_column():
         connection.execute(text("ALTER TABLE students ADD COLUMN skills VARCHAR(500)"))
         connection.commit()
     print("Added students.skills column")
+
+
+def ensure_student_blacklist_column():
+    """Add students.is_blacklisted if the database predates this column."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    if "students" not in inspector.get_table_names():
+        return
+
+    column_names = [col["name"] for col in inspector.get_columns("students")]
+    if "is_blacklisted" in column_names:
+        return
+
+    with db.engine.connect() as connection:
+        connection.execute(
+            text(
+                "ALTER TABLE students ADD COLUMN is_blacklisted BOOLEAN "
+                "NOT NULL DEFAULT 0"
+            )
+        )
+        connection.commit()
+    print("Added students.is_blacklisted column")
+
+
+def ensure_company_profile_columns():
+    """
+    Add companies.industry and companies.location if missing.
+    Also ensure companies.is_blacklisted exists on older databases.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    if "companies" not in inspector.get_table_names():
+        return
+
+    column_names = [col["name"] for col in inspector.get_columns("companies")]
+
+    columns_to_add = [
+        ("industry", "VARCHAR(100)"),
+        ("location", "VARCHAR(100)"),
+        ("is_blacklisted", "BOOLEAN NOT NULL DEFAULT 0"),
+    ]
+
+    with db.engine.connect() as connection:
+        for column_name, column_type in columns_to_add:
+            if column_name in column_names:
+                continue
+            connection.execute(
+                text(f"ALTER TABLE companies ADD COLUMN {column_name} {column_type}")
+            )
+            print(f"Added companies.{column_name} column")
+        connection.commit()
 
 
 def ensure_application_interview_columns():
@@ -171,6 +226,7 @@ def create_default_admin():
 
 def register_routes(app):
     """Register all URL routes for the application."""
+    from decorators import admin_required
 
     @app.route("/", methods=["GET"])
     def home():
@@ -181,9 +237,10 @@ def register_routes(app):
         return jsonify({"message": "Placement Portal Backend Running"})
 
     @app.route("/test-celery", methods=["GET"])
+    @admin_required
     def test_celery():
         """
-        Stage 9.2: trigger the demo Celery task.
+        Stage 9.2: trigger the demo Celery task (admin only).
 
         Flow:
           1. hello_task.delay() sends the job to Redis (broker)

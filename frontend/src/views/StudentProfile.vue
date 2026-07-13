@@ -235,7 +235,7 @@ export default {
           Browse Drives
         </router-link>
         <router-link class="nav-link text-light" to="/student/applications">
-          My Applications
+          Placement History
         </router-link>
         <router-link class="nav-link text-light" to="/student/profile">Profile</router-link>
         <button
@@ -263,7 +263,7 @@ export default {
           </li>
           <li class="nav-item">
             <router-link class="nav-link" to="/student/applications">
-              My Applications
+              Placement History
             </router-link>
           </li>
           <li class="nav-item">

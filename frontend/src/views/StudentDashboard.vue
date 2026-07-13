@@ -117,8 +117,10 @@ export default {
 
       try {
         const data = await requestStudentExport();
+        this.exportMessage = "Export started successfully. Generating CSV...";
+        await this.$nextTick();
         await this.waitAndDownloadStudentCsv(data.filename);
-        this.exportMessage = `Export ready: ${data.filename}`;
+        this.exportMessage = `Export complete. Downloaded: ${data.filename}`;
       } catch (err) {
         this.exportError =
           err.response?.data?.message ||
@@ -157,7 +159,7 @@ export default {
           Browse Drives
         </router-link>
         <router-link class="nav-link text-light" to="/student/applications">
-          My Applications
+          Placement History
         </router-link>
         <router-link class="nav-link text-light" to="/student/profile">Profile</router-link>
         <button
@@ -185,7 +187,7 @@ export default {
           </li>
           <li class="nav-item">
             <router-link class="nav-link" to="/student/applications">
-              My Applications
+              Placement History
             </router-link>
           </li>
           <li class="nav-item">

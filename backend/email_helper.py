@@ -1,13 +1,28 @@
 """
-email_helper.py - Reusable Email Helper (Stage 9.3)
+email_helper.py - Reusable Email Helper (Stage 9.3 / 9.4)
 
-One place to build reminder HTML and send mail.
-Celery tasks call these helpers so email logic is not duplicated.
+Email flow (do not change scheduling — that lives in celery_app.py Beat):
+
+1. Celery Beat triggers send_daily_reminders (daily) or generate_monthly_report (monthly).
+2. tasks.py builds HTML via build_*_html helpers below.
+3. send_email() delivers one message through Flask-Mail → MailHog (local SMTP).
+4. Caller (tasks.py) logs success/failure and continues with remaining recipients.
+
+Daily Reminder types (students):
+  - Upcoming placement-drive deadline (within 2 days)
+  - Upcoming interview schedule (within 24 hours)
+
+Monthly Report (admin):
+  - HTML placement statistics emailed to the admin account
 """
+
+import logging
 
 from flask_mail import Message
 
 from extensions import mail
+
+logger = logging.getLogger(__name__)
 
 
 def build_drive_reminder_html(student_name, drive_title, company_name, deadline):
@@ -53,12 +68,13 @@ def build_interview_reminder_html(
 
 def send_email(to_email, subject, html_body):
     """
-    Send one HTML email.
+    Send one HTML email via Flask-Mail.
 
     Returns True on success, False on failure.
-    Caller decides whether to count the student as sent or skipped.
+    Failures are logged; the Celery job continues for other recipients.
     """
     if not to_email:
+        logger.warning("Email skipped: empty recipient (subject=%s)", subject)
         return False
 
     try:
@@ -68,8 +84,15 @@ def send_email(to_email, subject, html_body):
             html=html_body,
         )
         mail.send(message)
+        logger.info("Email sent to %s | subject=%s", to_email, subject)
         return True
     except Exception as error:
         # Keep going for other students if one email fails
+        logger.error(
+            "Email failed for %s | subject=%s | error=%s",
+            to_email,
+            subject,
+            error,
+        )
         print(f"Email failed for {to_email}: {error}")
         return False

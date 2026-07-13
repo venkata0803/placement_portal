@@ -48,9 +48,11 @@ def write_student_applications_csv(student_id, filename):
     """
     Write one student's application history to a CSV file.
 
-    Columns:
-      Application ID, Drive Title, Company, Applied Date,
-      Current Status, Interview Date, Interview Mode, Final Result
+    Required columns (MAD-II Stage 9.5):
+      Student ID, Company Name, Drive Title, Application Status, Dates
+
+    Extra columns kept for usefulness:
+      Application ID, Interview Date, Interview Mode, Final Result
     """
     export_folder = get_export_folder()
     file_path = os.path.join(export_folder, filename)
@@ -62,12 +64,13 @@ def write_student_applications_csv(student_id, filename):
     )
 
     headers = [
-        "Application ID",
+        "Student ID",
+        "Company Name",
         "Drive Title",
-        "Company",
+        "Application Status",
         "Applied Date",
-        "Current Status",
         "Interview Date",
+        "Application ID",
         "Interview Mode",
         "Final Result",
     ]
@@ -86,14 +89,15 @@ def write_student_applications_csv(student_id, filename):
                     company_name = drive.company.company_name or ""
 
             writer.writerow([
-                app.id,
-                drive_title,
+                student_id,
                 company_name,
+                drive_title,
+                app.status or "",
                 app.application_date.strftime("%Y-%m-%d %H:%M")
                 if app.application_date
                 else "",
-                app.status or "",
                 str(app.interview_date) if app.interview_date else "",
+                app.id,
                 app.interview_mode or "",
                 _final_result(app.status),
             ])

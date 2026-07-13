@@ -21,6 +21,7 @@ from cache_helpers import (
     invalidate_company_dashboard,
     invalidate_student_dashboard,
     invalidate_student_drives,
+    with_cache_performance_log,
 )
 from decorators import company_required
 from extensions import cache, db
@@ -88,13 +89,16 @@ def _get_application_count(company_id):
 
 def _check_company_approval(company):
     """
-    Only approved companies can create or view placement drives.
+    Only approved, non-blacklisted companies can create or view placement drives.
 
     Returns (None, None) if approved.
     Returns (json_response, status_code) if access should be blocked.
     """
     if not company:
         return jsonify({"message": "Company profile not found"}), 404
+
+    if company.is_blacklisted:
+        return jsonify({"message": "Your company has been blacklisted."}), 403
 
     if company.approval_status == "Rejected":
         return jsonify({"message": "Company registration rejected."}), 403
@@ -103,6 +107,21 @@ def _check_company_approval(company):
         return jsonify({"message": "Company approval pending."}), 403
 
     return None, None
+
+
+def _profile_to_dict(company):
+    """Build company profile JSON for GET/PUT /company/profile."""
+    return {
+        "company_name": company.company_name,
+        "website": company.website or "",
+        "industry": company.industry or "",
+        "location": company.location or "",
+        "hr_name": company.hr_name,
+        "hr_email": company.hr_email,
+        "description": company.description or "",
+        "approval_status": company.approval_status,
+        "is_blacklisted": company.is_blacklisted,
+    }
 
 
 def _validate_drive_data(data):
@@ -270,6 +289,7 @@ def _validate_status_change(application, new_status):
 
 @company_bp.route("/company/dashboard", methods=["GET"])
 @company_required
+@with_cache_performance_log("company_dashboard", company_dashboard_key)
 @cache.cached(timeout=CACHE_TIMEOUT, key_prefix=company_dashboard_key)
 def get_dashboard():
     """
@@ -302,6 +322,74 @@ def get_dashboard():
         "approved_drives": drive_counts["approved_drives"],
         "pending_drives": drive_counts["pending_drives"],
         "total_applications": total_applications,
+    }), 200
+
+
+@company_bp.route("/company/profile", methods=["GET"])
+@company_required
+def get_company_profile():
+    """
+    GET /company/profile
+
+    Return the logged-in company's editable profile fields.
+    """
+    company = _get_current_company()
+    if not company:
+        return jsonify({"message": "Company profile not found"}), 404
+
+    return jsonify(_profile_to_dict(company)), 200
+
+
+@company_bp.route("/company/profile", methods=["PUT"])
+@company_required
+def update_company_profile():
+    """
+    PUT /company/profile
+
+    Update company profile fields.
+    Editable: company_name, website, industry, location, hr_name, hr_email, description.
+    """
+    company = _get_current_company()
+    if not company:
+        return jsonify({"message": "Company profile not found"}), 404
+
+    if company.is_blacklisted:
+        return jsonify({"message": "Your company has been blacklisted."}), 403
+
+    data = request.get_json(silent=True) or {}
+
+    company_name = data.get("company_name")
+    hr_name = data.get("hr_name")
+    hr_email = data.get("hr_email")
+
+    if company_name is None or str(company_name).strip() == "":
+        return jsonify({"message": "company_name is required"}), 400
+    if hr_name is None or str(hr_name).strip() == "":
+        return jsonify({"message": "hr_name is required"}), 400
+    if hr_email is None or str(hr_email).strip() == "":
+        return jsonify({"message": "hr_email is required"}), 400
+
+    company.company_name = str(company_name).strip()
+    company.hr_name = str(hr_name).strip()
+    company.hr_email = str(hr_email).strip()
+
+    website = data.get("website")
+    industry = data.get("industry")
+    location = data.get("location")
+    description = data.get("description")
+
+    company.website = str(website).strip() if website else None
+    company.industry = str(industry).strip() if industry else None
+    company.location = str(location).strip() if location else None
+    company.description = str(description).strip() if description else None
+
+    db.session.commit()
+
+    invalidate_company_dashboard(company.user_id)
+
+    return jsonify({
+        "message": "Profile updated successfully",
+        "profile": _profile_to_dict(company),
     }), 200
 
 

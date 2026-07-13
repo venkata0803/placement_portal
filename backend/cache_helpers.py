@@ -1,9 +1,10 @@
 """
-cache_helpers.py - Stage 9.1 Redis Cache Keys and Invalidation
+cache_helpers.py - Stage 9.1 Redis Cache Keys, Invalidation, Performance Logging
 
 Beginner-friendly helpers so route files can:
   1. Build stable cache keys for @cache.cached
   2. Delete / bump related keys when data changes
+  3. Log cache HIT / MISS and response timing (performance logging)
 
 Cached APIs (timeout 300s):
   - GET /admin/dashboard
@@ -14,10 +15,16 @@ Cached APIs (timeout 300s):
 NOT cached: login, register, apply, company/drive approval endpoints.
 """
 
+import logging
+import time
+from functools import wraps
+
 from flask import request
 from flask_jwt_extended import get_jwt_identity
 
 from extensions import cache
+
+logger = logging.getLogger(__name__)
 
 # How long cached responses live (matches Config.CACHE_DEFAULT_TIMEOUT)
 CACHE_TIMEOUT = 300
@@ -88,12 +95,90 @@ def student_drives_key():
     return f"student_drives_{user_id}_v{ver}_{query_str}"
 
 
+# ---------- Performance logging wrapper for cached endpoints ----------
+
+
+def with_cache_performance_log(endpoint_name, key_func):
+    """
+    Decorator that logs Redis cache HIT/MISS and response time.
+
+    Place ABOVE @cache.cached so this runs first on every request:
+      @route
+      @role_required
+      @with_cache_performance_log("admin_dashboard", admin_dashboard_key)
+      @cache.cached(...)
+      def handler(): ...
+
+    On a cache HIT, Flask-Caching returns early and the view body is skipped;
+    elapsed time is still logged here (should be very fast).
+    """
+
+    def decorator(view_func):
+        @wraps(view_func)
+        def wrapper(*args, **kwargs):
+            start = time.perf_counter()
+            cache_key = None
+            try:
+                cache_key = key_func() if callable(key_func) else key_func
+            except Exception as error:
+                logger.warning(
+                    "[PERF] %s could not build cache key: %s",
+                    endpoint_name,
+                    error,
+                )
+
+            # When key_prefix is a callable, Flask-Caching stores under that exact key
+            was_hit = False
+            if cache_key is not None:
+                try:
+                    was_hit = cache.get(cache_key) is not None
+                except Exception as error:
+                    logger.warning(
+                        "[PERF] %s cache lookup failed: %s",
+                        endpoint_name,
+                        error,
+                    )
+
+            result = view_func(*args, **kwargs)
+            elapsed_ms = (time.perf_counter() - start) * 1000
+
+            if was_hit:
+                logger.info(
+                    "[PERF][CACHE HIT] endpoint=%s key=%s time=%.2fms",
+                    endpoint_name,
+                    cache_key,
+                    elapsed_ms,
+                )
+                print(
+                    f"[PERF][CACHE HIT] {endpoint_name} "
+                    f"key={cache_key} time={elapsed_ms:.2f}ms"
+                )
+            else:
+                logger.info(
+                    "[PERF][CACHE MISS] endpoint=%s key=%s time=%.2fms",
+                    endpoint_name,
+                    cache_key,
+                    elapsed_ms,
+                )
+                print(
+                    f"[PERF][CACHE MISS] {endpoint_name} "
+                    f"key={cache_key} time={elapsed_ms:.2f}ms"
+                )
+
+            return result
+
+        return wrapper
+
+    return decorator
+
+
 # ---------- Invalidation helpers (call after successful DB commits) ----------
 
 
 def invalidate_admin_dashboard():
     """Clear the shared admin dashboard cache."""
     cache.delete(admin_dashboard_key())
+    logger.info("[CACHE INVALIDATE] admin_dashboard")
 
 
 def invalidate_company_dashboard(user_id):
@@ -103,18 +188,23 @@ def invalidate_company_dashboard(user_id):
     user_id is the User.id linked to the Company (same as JWT identity).
     """
     ver = _get_version(_COMPANY_DASH_VER)
-    cache.delete(f"company_dashboard_{user_id}_v{ver}")
+    key = f"company_dashboard_{user_id}_v{ver}"
+    cache.delete(key)
+    logger.info("[CACHE INVALIDATE] company_dashboard user_id=%s", user_id)
 
 
 def invalidate_all_company_dashboards():
     """Clear every company dashboard (bumps version)."""
-    _bump_version(_COMPANY_DASH_VER)
+    new_ver = _bump_version(_COMPANY_DASH_VER)
+    logger.info("[CACHE INVALIDATE] all company_dashboards -> v%s", new_ver)
 
 
 def invalidate_student_dashboard(user_id):
     """Clear one student's dashboard."""
     ver = _get_version(_STUDENT_DASH_VER)
-    cache.delete(f"student_dashboard_{user_id}_v{ver}")
+    key = f"student_dashboard_{user_id}_v{ver}"
+    cache.delete(key)
+    logger.info("[CACHE INVALIDATE] student_dashboard user_id=%s", user_id)
 
 
 def invalidate_all_student_dashboards():
@@ -123,7 +213,8 @@ def invalidate_all_student_dashboards():
 
     Used when approved drive count changes (affects available_drives for all).
     """
-    _bump_version(_STUDENT_DASH_VER)
+    new_ver = _bump_version(_STUDENT_DASH_VER)
+    logger.info("[CACHE INVALIDATE] all student_dashboards -> v%s", new_ver)
 
 
 def invalidate_student_drives():
@@ -132,7 +223,8 @@ def invalidate_student_drives():
 
     Used when approved drives are created/updated/closed/approved/rejected.
     """
-    _bump_version(_STUDENT_DRIVES_VER)
+    new_ver = _bump_version(_STUDENT_DRIVES_VER)
+    logger.info("[CACHE INVALIDATE] all student_drives -> v%s", new_ver)
 
 
 def invalidate_after_drive_status_change(company_user_id=None):

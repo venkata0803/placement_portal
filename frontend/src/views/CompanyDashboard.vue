@@ -152,7 +152,7 @@ export default {
         <router-link class="nav-link text-light" to="/company">Dashboard</router-link>
         <router-link class="nav-link text-light" to="/company/drives">Placement Drives</router-link>
         <router-link class="nav-link text-light" to="/company/applicants">Applicants</router-link>
-        <span class="nav-link disabled text-secondary">Profile</span>
+        <router-link class="nav-link text-light" to="/company/profile">Profile</router-link>
         <button
           type="button"
           class="btn btn-outline-light btn-sm ms-2"
@@ -178,14 +178,25 @@ export default {
             <router-link class="nav-link" to="/company/applicants">Applicants</router-link>
           </li>
           <li class="nav-item">
-            <span class="nav-link disabled text-muted">Profile</span>
+            <router-link class="nav-link" to="/company/profile">Profile</router-link>
+          </li>
+          <li class="nav-item mt-2">
+            <button
+              type="button"
+              class="btn btn-outline-danger btn-sm w-100"
+              @click="handleLogout"
+            >
+              Logout
+            </button>
           </li>
         </ul>
       </aside>
 
       <!-- Main Content -->
       <main class="flex-grow-1 p-4">
-        <h2 class="mb-4">Overview</h2>
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+          <h2 class="mb-0">Overview</h2>
+        </div>
 
         <div v-if="exportMessage" class="alert alert-success" role="alert">
           {{ exportMessage }}
@@ -341,18 +352,64 @@ export default {
 </template>
 
 <style scoped>
+/* Match Student Dashboard shell: navbar, sidebar spacing, active + hover */
 .company-layout {
   min-height: calc(100vh - 56px);
 }
 
 .sidebar {
   width: 220px;
+  min-width: 220px;
   min-height: 100%;
+  flex-shrink: 0;
 }
 
-.nav-link.active {
+.sidebar .nav-link {
+  color: #212529;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.25rem;
+  border-radius: 0.25rem;
+}
+
+.sidebar .nav-link:hover {
+  color: #0d6efd;
+  background-color: #f0f4f8;
+}
+
+.sidebar .nav-link.active {
   color: #0d6efd;
   background-color: #e7f1ff;
-  border-radius: 0.25rem;
+  font-weight: 600;
+}
+
+.navbar .nav-link.text-light {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.navbar .nav-link.text-light:hover {
+  color: #ffffff !important;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.navbar .nav-link.text-light.router-link-exact-active,
+.navbar .nav-link.text-light.active {
+  color: #ffffff !important;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+@media (max-width: 768px) {
+  .company-layout {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    min-width: 100%;
+    border-right: 0 !important;
+    border-bottom: 1px solid #dee2e6;
+  }
 }
 </style>

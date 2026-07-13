@@ -31,6 +31,8 @@ class Company(db.Model):
 
     company_name = db.Column(db.String(100), nullable=False)
     website = db.Column(db.String(200), nullable=True)
+    industry = db.Column(db.String(100), nullable=True)
+    location = db.Column(db.String(100), nullable=True)
     hr_name = db.Column(db.String(100), nullable=False)
     hr_email = db.Column(db.String(120), nullable=False)
     description = db.Column(db.Text, nullable=True)
@@ -39,7 +41,7 @@ class Company(db.Model):
     # Admin must approve a company before they can post drives
     approval_status = db.Column(db.String(20), default="Pending", nullable=False)
 
-    # Blacklisted companies cannot participate in placements
+    # Blacklisted companies cannot login or create drives
     is_blacklisted = db.Column(db.Boolean, default=False, nullable=False)
 
     # Relationship: One Company can create MANY Placement Drives

@@ -46,9 +46,10 @@ instance/
 dump.rdb
 *.rdb
 
-# Celery Beat schedule file (Stage 9.3)
+# Celery Beat schedule / runtime files (SQLite WAL variants included)
 celerybeat-schedule
 celerybeat-schedule.*
+celerybeat-schedule-*
 celerybeat.pid
 
 # Node / Vue
@@ -73,11 +74,16 @@ yarn-error.log*
 # OS
 .DS_Store
 Thumbs.db
+Desktop.ini
 
-# Coverage / testing
+# Coverage / testing / linters
 .coverage
 htmlcov/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.cache/
 
 # Uploaded student resumes (Stage 6.2) — keep folder, ignore PDF files
 backend/uploads/resumes/*

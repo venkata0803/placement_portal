@@ -35,6 +35,7 @@ from cache_helpers import (
     invalidate_student_drives,
     student_dashboard_key,
     student_drives_key,
+    with_cache_performance_log,
 )
 from decorators import student_required
 from extensions import cache, db
@@ -243,6 +244,7 @@ def _deadline_has_passed(drive):
 
 @student_bp.route("/student/drives", methods=["GET"])
 @student_required
+@with_cache_performance_log("student_drives", student_drives_key)
 @cache.cached(timeout=CACHE_TIMEOUT, key_prefix=student_drives_key)
 def browse_approved_drives():
     """
@@ -340,6 +342,9 @@ def apply_to_drive(drive_id):
     if not student:
         return jsonify({"message": "Student profile not found"}), 404
 
+    if student.is_blacklisted:
+        return jsonify({"message": "Your account has been blacklisted. You cannot apply."}), 403
+
     drive = PlacementDrive.query.get(drive_id)
     if not drive:
         return jsonify({"message": "Placement drive not found"}), 404
@@ -382,19 +387,32 @@ def apply_to_drive(drive_id):
 
 
 def _format_application_row(app):
-    """Return one application row for GET /student/applications."""
+    """
+    Return one application row for GET /student/applications
+    (student Placement History page).
+
+    final_result is derived from status so the UI does not need duplicate data:
+      Selected / Rejected → that value; otherwise Pending.
+    """
     drive = app.drive
     company_name = drive.company.company_name if drive and drive.company else ""
+    status = app.status or "Applied"
+    if status in ("Selected", "Rejected"):
+        final_result = status
+    else:
+        final_result = "Pending"
+
     return {
         "id": app.id,
         "drive_id": app.drive_id,
         "job_title": drive.job_title if drive else "",
         "company_name": company_name,
         "applied_date": app.application_date.isoformat() if app.application_date else None,
-        "status": app.status,
+        "status": status,
         "interview_date": app.interview_date.isoformat() if app.interview_date else None,
         "interview_time": app.interview_time,
         "interview_mode": app.interview_mode,
+        "final_result": final_result,
     }
 
 
@@ -428,6 +446,7 @@ def get_my_applications():
 
 @student_bp.route("/student/dashboard", methods=["GET"])
 @student_required
+@with_cache_performance_log("student_dashboard", student_dashboard_key)
 @cache.cached(timeout=CACHE_TIMEOUT, key_prefix=student_dashboard_key)
 def get_dashboard():
     """

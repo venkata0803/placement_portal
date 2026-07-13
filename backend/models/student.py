@@ -38,6 +38,9 @@ class Student(db.Model):
     skills = db.Column(db.String(500), nullable=True)
     resume_filename = db.Column(db.String(200), nullable=True)
 
+    # Blacklisted students cannot login or apply for drives
+    is_blacklisted = db.Column(db.Boolean, default=False, nullable=False)
+
     # Relationship: One Student can apply to MANY placement drives
     # Each application is stored in the Application table
     applications = db.relationship(

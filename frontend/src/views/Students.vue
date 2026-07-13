@@ -1,89 +1,84 @@
 <script>
 /**
- * Companies.vue - Admin Company Approval Page (Stage 4.2)
+ * Students.vue - Admin Student Management
  *
- * Lists all registered companies in a Bootstrap table.
- * Admin can Approve, Reject, Blacklist, or Activate each company.
- * Table / badges update immediately after each action.
+ * Lists all registered students.
+ * Admin can Blacklist or Activate each student after confirmation.
+ * UI updates immediately after a successful action.
  */
 
 import {
   clearAuthData,
-  fetchCompanies,
-  approveCompany,
-  rejectCompany,
-  blacklistCompany,
-  unblacklistCompany,
+  fetchStudents,
+  blacklistStudent,
+  unblacklistStudent,
   logout,
 } from "../services/api.js";
 
 export default {
-  name: "Companies",
+  name: "Students",
 
   data() {
     return {
       loading: true,
       error: null,
-      companies: [],
+      students: [],
       actionLoading: false,
       filters: {
-        company_name: "",
-        industry: "",
-        location: "",
+        name: "",
+        email: "",
+        branch: "",
+        year: "",
       },
     };
   },
 
   mounted() {
-    this.loadCompanies();
+    this.loadStudents();
   },
 
   methods: {
     buildParams() {
       const params = {};
-      if (this.filters.company_name.trim()) {
-        params.company_name = this.filters.company_name.trim();
-      }
-      if (this.filters.industry.trim()) {
-        params.industry = this.filters.industry.trim();
-      }
-      if (this.filters.location.trim()) {
-        params.location = this.filters.location.trim();
-      }
+      if (this.filters.name.trim()) params.name = this.filters.name.trim();
+      if (this.filters.email.trim()) params.email = this.filters.email.trim();
+      if (this.filters.branch.trim()) params.branch = this.filters.branch.trim();
+      if (this.filters.year.trim()) params.year = this.filters.year.trim();
       return params;
     },
 
-    async loadCompanies() {
+    async loadStudents() {
       this.loading = true;
       this.error = null;
 
       try {
-        this.companies = await fetchCompanies(this.buildParams());
+        this.students = await fetchStudents(this.buildParams());
       } catch (err) {
         this.error =
           err.response?.data?.message ||
-          "Failed to load companies. Please try again.";
+          "Failed to load students. Please try again.";
       } finally {
         this.loading = false;
       }
     },
 
     handleSearch() {
-      this.loadCompanies();
+      this.loadStudents();
     },
 
     clearFilters() {
       this.filters = {
-        company_name: "",
-        industry: "",
-        location: "",
+        name: "",
+        email: "",
+        branch: "",
+        year: "",
       };
-      this.loadCompanies();
+      this.loadStudents();
     },
 
-    async handleApprove(company) {
+    async handleBlacklist(student) {
       const confirmed = window.confirm(
-        `Approve company "${company.company_name}"?`
+        `Blacklist student "${student.full_name}"? They will not be able to login or apply for drives.`
       );
       if (!confirmed) {
         return;
@@ -92,21 +87,21 @@ export default {
       this.actionLoading = true;
 
       try {
-        await approveCompany(company.id);
-        company.approval_status = "Approved";
+        await blacklistStudent(student.id);
+        student.is_blacklisted = true;
       } catch (err) {
         alert(
           err.response?.data?.message ||
-            "Failed to approve company. Please try again."
+            "Failed to blacklist student. Please try again."
         );
       } finally {
         this.actionLoading = false;
       }
     },
 
-    async handleReject(company) {
+    async handleActivate(student) {
       const confirmed = window.confirm(
-        `Reject company "${company.company_name}"?`
+        `Activate student "${student.full_name}"?`
       );
       if (!confirmed) {
         return;
@@ -115,72 +110,16 @@ export default {
       this.actionLoading = true;
 
       try {
-        await rejectCompany(company.id);
-        company.approval_status = "Rejected";
+        await unblacklistStudent(student.id);
+        student.is_blacklisted = false;
       } catch (err) {
         alert(
           err.response?.data?.message ||
-            "Failed to reject company. Please try again."
+            "Failed to activate student. Please try again."
         );
       } finally {
         this.actionLoading = false;
       }
-    },
-
-    async handleBlacklist(company) {
-      const confirmed = window.confirm(
-        `Blacklist company "${company.company_name}"? They will not be able to login or create drives.`
-      );
-      if (!confirmed) {
-        return;
-      }
-
-      this.actionLoading = true;
-
-      try {
-        await blacklistCompany(company.id);
-        company.is_blacklisted = true;
-      } catch (err) {
-        alert(
-          err.response?.data?.message ||
-            "Failed to blacklist company. Please try again."
-        );
-      } finally {
-        this.actionLoading = false;
-      }
-    },
-
-    async handleActivate(company) {
-      const confirmed = window.confirm(
-        `Activate company "${company.company_name}"?`
-      );
-      if (!confirmed) {
-        return;
-      }
-
-      this.actionLoading = true;
-
-      try {
-        await unblacklistCompany(company.id);
-        company.is_blacklisted = false;
-      } catch (err) {
-        alert(
-          err.response?.data?.message ||
-            "Failed to activate company. Please try again."
-        );
-      } finally {
-        this.actionLoading = false;
-      }
-    },
-
-    statusBadgeClass(status) {
-      if (status === "Approved") {
-        return "bg-success";
-      }
-      if (status === "Rejected") {
-        return "bg-danger";
-      }
-      return "bg-warning text-dark";
     },
 
     async handleLogout() {
@@ -220,10 +159,12 @@ export default {
             <router-link class="nav-link" to="/admin">Dashboard</router-link>
           </li>
           <li class="nav-item">
-            <router-link class="nav-link" to="/admin/students">Students</router-link>
+            <router-link class="nav-link active" to="/admin/students">
+              Students
+            </router-link>
           </li>
           <li class="nav-item">
-            <router-link class="nav-link active" to="/admin/companies">
+            <router-link class="nav-link" to="/admin/companies">
               Companies
             </router-link>
           </li>
@@ -244,37 +185,47 @@ export default {
       </aside>
 
       <main class="flex-grow-1 p-4">
-        <h2 class="mb-4">Company Approval</h2>
+        <h2 class="mb-4">Student Management</h2>
 
         <div class="card shadow-sm mb-4">
           <div class="card-body">
             <form class="row g-3" @submit.prevent="handleSearch">
-              <div class="col-md-4">
-                <label class="form-label">Company Name</label>
+              <div class="col-md-3">
+                <label class="form-label">Name</label>
                 <input
-                  v-model="filters.company_name"
+                  v-model="filters.name"
                   type="text"
                   class="form-control"
-                  placeholder="Company name"
+                  placeholder="Student name"
                 />
               </div>
-              <div class="col-md-4">
-                <label class="form-label">Industry</label>
+              <div class="col-md-3">
+                <label class="form-label">Email</label>
                 <input
-                  v-model="filters.industry"
+                  v-model="filters.email"
                   type="text"
                   class="form-control"
-                  placeholder="Industry"
+                  placeholder="Email"
                 />
               </div>
-              <div class="col-md-4">
-                <label class="form-label">Location</label>
+              <div class="col-md-3">
+                <label class="form-label">Branch</label>
                 <input
-                  v-model="filters.location"
+                  v-model="filters.branch"
                   type="text"
                   class="form-control"
-                  placeholder="Location"
+                  placeholder="Branch"
                 />
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Year</label>
+                <select v-model="filters.year" class="form-select">
+                  <option value="">All</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                </select>
               </div>
               <div class="col-12 d-flex gap-2">
                 <button type="submit" class="btn btn-primary" :disabled="loading">
@@ -297,7 +248,7 @@ export default {
           <div class="spinner-border text-primary" role="status">
             <span class="visually-hidden">Loading...</span>
           </div>
-          <p class="mt-2 text-muted">Loading companies...</p>
+          <p class="mt-2 text-muted">Loading students...</p>
         </div>
 
         <div v-else-if="error" class="alert alert-danger" role="alert">
@@ -310,35 +261,30 @@ export default {
               <table class="table table-striped table-hover mb-0">
                 <thead class="table-light">
                   <tr>
-                    <th scope="col">Company Name</th>
+                    <th scope="col">Name</th>
                     <th scope="col">Email</th>
-                    <th scope="col">Website</th>
-                    <th scope="col">Approval</th>
+                    <th scope="col">Branch</th>
+                    <th scope="col">Year</th>
+                    <th scope="col">CGPA</th>
                     <th scope="col">Status</th>
                     <th scope="col">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-if="companies.length === 0">
-                    <td colspan="6" class="text-center text-muted">
-                      No companies registered yet.
+                  <tr v-if="students.length === 0">
+                    <td colspan="7" class="text-center text-muted">
+                      No students registered yet.
                     </td>
                   </tr>
-                  <tr v-for="company in companies" :key="company.id">
-                    <td>{{ company.company_name }}</td>
-                    <td>{{ company.email }}</td>
-                    <td>{{ company.website || "-" }}</td>
+                  <tr v-for="student in students" :key="student.id">
+                    <td>{{ student.full_name }}</td>
+                    <td>{{ student.email }}</td>
+                    <td>{{ student.branch }}</td>
+                    <td>{{ student.year }}</td>
+                    <td>{{ student.cgpa }}</td>
                     <td>
                       <span
-                        class="badge"
-                        :class="statusBadgeClass(company.approval_status)"
-                      >
-                        {{ company.approval_status }}
-                      </span>
-                    </td>
-                    <td>
-                      <span
-                        v-if="company.is_blacklisted"
+                        v-if="student.is_blacklisted"
                         class="badge bg-danger"
                       >
                         Blacklisted
@@ -347,36 +293,18 @@ export default {
                     </td>
                     <td>
                       <button
-                        class="btn btn-sm btn-success me-1 mb-1"
-                        :disabled="
-                          actionLoading || company.approval_status === 'Approved'
-                        "
-                        @click="handleApprove(company)"
-                      >
-                        Approve
-                      </button>
-                      <button
-                        class="btn btn-sm btn-danger me-1 mb-1"
-                        :disabled="
-                          actionLoading || company.approval_status === 'Rejected'
-                        "
-                        @click="handleReject(company)"
-                      >
-                        Reject
-                      </button>
-                      <button
-                        v-if="!company.is_blacklisted"
-                        class="btn btn-sm btn-warning mb-1"
+                        v-if="!student.is_blacklisted"
+                        class="btn btn-sm btn-warning"
                         :disabled="actionLoading"
-                        @click="handleBlacklist(company)"
+                        @click="handleBlacklist(student)"
                       >
                         Blacklist
                       </button>
                       <button
                         v-else
-                        class="btn btn-sm btn-outline-success mb-1"
+                        class="btn btn-sm btn-success"
                         :disabled="actionLoading"
-                        @click="handleActivate(company)"
+                        @click="handleActivate(student)"
                       >
                         Activate
                       </button>

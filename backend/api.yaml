@@ -1,0 +1,537 @@
+openapi: 3.0.3
+info:
+  title: Placement Portal API
+  version: 1.0.0
+  description: REST API documentation for the Placement Portal Application.
+
+servers:
+  - url: http://localhost:5000
+    description: Local development server
+
+tags:
+  - name: Auth
+    description: Authentication endpoints
+  - name: Admin
+    description: Admin-only endpoints
+  - name: Student
+    description: Student placement endpoints
+  - name: Company
+    description: Company placement drive endpoints
+
+paths:
+  /login:
+    post:
+      tags:
+        - Auth
+      summary: User login
+      description: |
+        Authenticate a user with email and password.
+        On success, returns a JWT access token along with the user's role and username.
+        The token must be sent as a Bearer token in the Authorization header for protected routes.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: student@example.com
+              password: secret123
+      responses:
+        '200':
+          description: Login successful. JWT access token returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              example:
+                token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                role: student
+                username: john_doe
+        '400':
+          description: Missing email or password.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+              example:
+                message: email and password are required
+        '401':
+          description: Invalid email or password.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+              example:
+                message: Invalid email or password
+        '403':
+          description: |
+            Account cannot log in (disabled, blacklisted, rejected,
+            or company awaiting admin approval).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+              example:
+                message: Account is disabled
+        '404':
+          description: Not used by this endpoint under normal conditions.
+
+  /admin/dashboard:
+    get:
+      tags:
+        - Admin
+      summary: Admin dashboard statistics
+      description: |
+        Returns summary counts (students, companies, placement drives, applications)
+        and the five most recently registered students and companies.
+        Requires a valid JWT with the admin role.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Dashboard statistics retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminDashboardResponse'
+              example:
+                total_students: 120
+                total_companies: 25
+                total_placement_drives: 40
+                total_applications: 300
+                recent_students:
+                  - name: Alice Smith
+                    email: alice@example.com
+                    created_at: '2026-07-10T10:00:00'
+                recent_companies:
+                  - name: Acme Corp
+                    email: hr@acme.com
+                    created_at: '2026-07-09T08:30:00'
+        '400':
+          description: Bad request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+        '401':
+          description: Missing or invalid JWT token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+              example:
+                message: Missing Authorization Header
+        '403':
+          description: Authenticated user does not have the admin role.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+              example:
+                message: Admin access required
+        '404':
+          description: Resource not found.
+
+  /student/drives:
+    get:
+      tags:
+        - Student
+      summary: List approved placement drives
+      description: |
+        Returns all placement drives with status Approved, newest first.
+        Each drive includes an already_applied flag for the logged-in student.
+        Optional query parameters support search and eligibility filtering.
+        Requires a valid JWT with the student role.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: job_title
+          in: query
+          required: false
+          description: Case-insensitive partial match on job title.
+          schema:
+            type: string
+          example: Software Engineer
+        - name: company_name
+          in: query
+          required: false
+          description: Case-insensitive partial match on company name.
+          schema:
+            type: string
+          example: Acme
+        - name: branch
+          in: query
+          required: false
+          description: Filter drives whose eligible branches contain this value.
+          schema:
+            type: string
+          example: CSE
+        - name: year
+          in: query
+          required: false
+          description: Filter by exact eligible year (1–4).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 4
+          example: 4
+        - name: minimum_cgpa
+          in: query
+          required: false
+          description: |
+            Return drives whose minimum CGPA requirement is less than or equal
+            to this value.
+          schema:
+            type: number
+            format: float
+            minimum: 0
+            maximum: 10
+          example: 7.5
+      responses:
+        '200':
+          description: List of approved placement drives.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StudentDrive'
+              example:
+                - id: 1
+                  job_title: Software Engineer
+                  company_name: Acme Corp
+                  description: Full-stack development role
+                  eligible_branch: CSE, ECE
+                  minimum_cgpa: 7.0
+                  eligible_year: 4
+                  status: Approved
+                  deadline: '2026-08-15T00:00:00'
+                  created_at: '2026-07-01T12:00:00'
+                  already_applied: false
+        '400':
+          description: Invalid query parameter (e.g. year or minimum_cgpa).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+              example:
+                message: year must be a number
+        '401':
+          description: Missing or invalid JWT token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+        '403':
+          description: Authenticated user does not have the student role.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+        '404':
+          description: Student profile not found for the authenticated user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+              example:
+                message: Student profile not found
+
+  /student/apply/{drive_id}:
+    post:
+      tags:
+        - Student
+      summary: Apply to a placement drive
+      description: |
+        Submits an application for the authenticated student to the given drive.
+        The drive must be Approved, the deadline must not have passed, the student
+        must be eligible (branch, CGPA, year), and duplicate applications are rejected.
+        Requires a valid JWT with the student role.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: drive_id
+          in: path
+          required: true
+          description: ID of the placement drive to apply to.
+          schema:
+            type: integer
+          example: 1
+      responses:
+        '201':
+          description: Application submitted successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+              example:
+                message: Application submitted successfully
+        '400':
+          description: |
+            Application rejected (drive not approved, deadline passed,
+            already applied, or student ineligible).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+              example:
+                message: You have already applied to this drive
+        '401':
+          description: Missing or invalid JWT token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+        '403':
+          description: |
+            Student is blacklisted, or authenticated user is not a student.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+              example:
+                message: Your account has been blacklisted. You cannot apply.
+        '404':
+          description: Student profile or placement drive not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+              example:
+                message: Placement drive not found
+
+  /company/drives:
+    post:
+      tags:
+        - Company
+      summary: Create a placement drive
+      description: |
+        Creates a new placement drive for the authenticated company.
+        The drive is saved with status Pending and awaits admin approval.
+        Requires a valid JWT with the company role. The company must be Approved
+        and not blacklisted.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDriveRequest'
+            example:
+              job_title: Software Engineer
+              job_description: Full-stack development role with React and Flask.
+              eligible_branch: CSE, ECE
+              minimum_cgpa: 7.0
+              eligible_year: 4
+              application_deadline: '2026-08-15'
+      responses:
+        '201':
+          description: Placement drive created successfully (status Pending).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+              example:
+                message: Placement drive created successfully
+        '400':
+          description: Validation failed for one or more drive fields.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+              example:
+                message: job_title is required
+        '401':
+          description: Missing or invalid JWT token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+        '403':
+          description: |
+            Authenticated user is not a company, or the company is not approved /
+            is blacklisted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+              example:
+                message: Company access required
+        '404':
+          description: Company profile not found for the authenticated user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT access token obtained from POST /login.
+        Send as: Authorization: Bearer <token>
+
+  schemas:
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: Registered user email address.
+          example: student@example.com
+        password:
+          type: string
+          format: password
+          description: Account password.
+          example: secret123
+
+    LoginResponse:
+      type: object
+      required:
+        - token
+        - role
+        - username
+      properties:
+        token:
+          type: string
+          description: JWT access token for subsequent authenticated requests.
+        role:
+          type: string
+          description: User role claim (admin, student, or company).
+          enum:
+            - admin
+            - student
+            - company
+        username:
+          type: string
+          description: Username associated with the account.
+
+    AdminDashboardResponse:
+      type: object
+      properties:
+        total_students:
+          type: integer
+          description: Total registered students.
+        total_companies:
+          type: integer
+          description: Total registered companies.
+        total_placement_drives:
+          type: integer
+          description: Total placement drives.
+        total_applications:
+          type: integer
+          description: Total student applications.
+        recent_students:
+          type: array
+          description: Five most recently registered students.
+          items:
+            $ref: '#/components/schemas/RecentUser'
+        recent_companies:
+          type: array
+          description: Five most recently registered companies.
+          items:
+            $ref: '#/components/schemas/RecentUser'
+
+    RecentUser:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    StudentDrive:
+      type: object
+      properties:
+        id:
+          type: integer
+        job_title:
+          type: string
+        company_name:
+          type: string
+        description:
+          type: string
+        eligible_branch:
+          type: string
+          description: Comma-separated eligible branches (e.g. CSE, ECE).
+        minimum_cgpa:
+          type: number
+          format: float
+        eligible_year:
+          type: integer
+        status:
+          type: string
+          example: Approved
+        deadline:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        already_applied:
+          type: boolean
+          description: Whether the current student has already applied.
+
+    CreateDriveRequest:
+      type: object
+      required:
+        - job_title
+        - job_description
+        - eligible_branch
+        - minimum_cgpa
+        - eligible_year
+        - application_deadline
+      properties:
+        job_title:
+          type: string
+          description: Title of the job opening.
+          example: Software Engineer
+        job_description:
+          type: string
+          description: Detailed job description.
+        eligible_branch:
+          type: string
+          description: Eligible branches (comma-separated if multiple).
+          example: CSE, ECE
+        minimum_cgpa:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 10
+          description: Minimum CGPA required (0–10).
+          example: 7.0
+        eligible_year:
+          type: integer
+          minimum: 1
+          maximum: 4
+          description: Eligible academic year (1–4).
+          example: 4
+        application_deadline:
+          type: string
+          format: date
+          description: Application deadline (ISO date; must not be in the past).
+          example: '2026-08-15'
+
+    ErrorMessage:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Human-readable error or status message.

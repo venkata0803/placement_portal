@@ -1,12 +1,20 @@
 <script>
 /**
- * MyApplications.vue (Stage 7 Combined)
+ * MyApplications.vue - Student Placement History
  *
- * Shows the logged-in student's applications in a beginner-friendly table.
- * Data source: GET /student/applications
+ * Shows the logged-in student's full application / placement history.
+ * Data source: GET /student/applications (existing API, no duplicate data).
+ * Export CSV: POST /student/export (Celery) then download.
  */
 
-import { clearAuthData, getMyApplications, logout } from "../services/api.js";
+import {
+  clearAuthData,
+  downloadStudentExport,
+  getMyApplications,
+  logout,
+  requestStudentExport,
+  saveBlobDownload,
+} from "../services/api.js";
 
 export default {
   name: "MyApplications",
@@ -16,6 +24,9 @@ export default {
       loading: true,
       error: null,
       applications: [],
+      exporting: false,
+      exportMessage: null,
+      exportError: null,
     };
   },
 
@@ -33,9 +44,47 @@ export default {
       } catch (err) {
         this.error =
           err.response?.data?.message ||
-          "Failed to load applications. Please try again.";
+          "Failed to load placement history. Please try again.";
       } finally {
         this.loading = false;
+      }
+    },
+
+    async waitAndDownloadStudentCsv(filename) {
+      const maxAttempts = 15;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          const response = await downloadStudentExport(filename);
+          saveBlobDownload(response, filename);
+          return true;
+        } catch (err) {
+          if (err.response?.status === 404 && attempt < maxAttempts) {
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            continue;
+          }
+          throw err;
+        }
+      }
+      return false;
+    },
+
+    async handleExportCsv() {
+      this.exporting = true;
+      this.exportMessage = null;
+      this.exportError = null;
+
+      try {
+        const data = await requestStudentExport();
+        this.exportMessage = "Export started successfully. Generating CSV...";
+        await this.$nextTick();
+        await this.waitAndDownloadStudentCsv(data.filename);
+        this.exportMessage = `Export complete. Downloaded: ${data.filename}`;
+      } catch (err) {
+        this.exportError =
+          err.response?.data?.message ||
+          "Failed to export CSV. Is the Celery worker running?";
+      } finally {
+        this.exporting = false;
       }
     },
 
@@ -59,6 +108,12 @@ export default {
       if (status === "Interview") return "bg-orange";
       if (status === "Shortlisted") return "bg-warning text-dark";
       return "bg-primary";
+    },
+
+    finalResultBadgeClass(result) {
+      if (result === "Selected") return "bg-success";
+      if (result === "Rejected") return "bg-danger";
+      return "bg-secondary";
     },
 
     async handleLogout() {
@@ -85,7 +140,7 @@ export default {
           Browse Drives
         </router-link>
         <router-link class="nav-link text-light" to="/student/applications">
-          My Applications
+          Placement History
         </router-link>
         <router-link class="nav-link text-light" to="/student/profile">Profile</router-link>
         <button
@@ -110,7 +165,7 @@ export default {
           </li>
           <li class="nav-item">
             <router-link class="nav-link active" to="/student/applications">
-              My Applications
+              Placement History
             </router-link>
           </li>
           <li class="nav-item">
@@ -129,18 +184,45 @@ export default {
       </aside>
 
       <main class="flex-grow-1 p-4">
-        <div class="d-flex align-items-center justify-content-between mb-3">
-          <h2 class="mb-0">My Applications</h2>
-          <button class="btn btn-outline-secondary btn-sm" @click="loadApplications">
-            Refresh
-          </button>
+        <div class="d-flex flex-wrap align-items-center justify-content-between mb-3 gap-2">
+          <h2 class="mb-0">Placement History</h2>
+          <div class="d-flex gap-2">
+            <button
+              type="button"
+              class="btn btn-outline-primary btn-sm"
+              :disabled="loading || exporting"
+              @click="handleExportCsv"
+            >
+              <span
+                v-if="exporting"
+                class="spinner-border spinner-border-sm me-1"
+                role="status"
+              ></span>
+              {{ exporting ? "Exporting..." : "Export CSV" }}
+            </button>
+            <button
+              type="button"
+              class="btn btn-outline-secondary btn-sm"
+              :disabled="loading"
+              @click="loadApplications"
+            >
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        <div v-if="exportMessage" class="alert alert-success" role="alert">
+          {{ exportMessage }}
+        </div>
+        <div v-if="exportError" class="alert alert-danger" role="alert">
+          {{ exportError }}
         </div>
 
         <div v-if="loading" class="text-center py-5">
           <div class="spinner-border text-primary" role="status">
             <span class="visually-hidden">Loading...</span>
           </div>
-          <p class="mt-2 text-muted">Loading applications...</p>
+          <p class="mt-2 text-muted">Loading placement history...</p>
         </div>
 
         <div v-else-if="error" class="alert alert-danger" role="alert">
@@ -149,39 +231,48 @@ export default {
 
         <div v-else class="card shadow-sm">
           <div class="card-body p-0">
-            <table class="table table-striped table-hover mb-0">
-              <thead class="table-light">
-                <tr>
-                  <th scope="col">Job Title</th>
-                  <th scope="col">Company</th>
-                  <th scope="col">Applied Date</th>
-                  <th scope="col">Current Status</th>
-                  <th scope="col">Interview Date</th>
-                  <th scope="col">Interview Time</th>
-                  <th scope="col">Interview Mode</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-if="applications.length === 0">
-                  <td colspan="7" class="text-center text-muted py-4">
-                    You have not applied to any drives yet.
-                  </td>
-                </tr>
-                <tr v-for="app in applications" :key="app.id">
-                  <td>{{ app.job_title }}</td>
-                  <td>{{ app.company_name }}</td>
-                  <td>{{ formatDate(app.applied_date) }}</td>
-                  <td>
-                    <span class="badge" :class="statusBadgeClass(app.status)">
-                      {{ app.status }}
-                    </span>
-                  </td>
-                  <td>{{ formatInterviewDate(app.interview_date) }}</td>
-                  <td>{{ formatInterviewField(app.interview_time) }}</td>
-                  <td>{{ formatInterviewField(app.interview_mode) }}</td>
-                </tr>
-              </tbody>
-            </table>
+            <div class="table-responsive">
+              <table class="table table-striped table-hover mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th scope="col">Application Date</th>
+                    <th scope="col">Company</th>
+                    <th scope="col">Drive</th>
+                    <th scope="col">Interview Date</th>
+                    <th scope="col">Interview Mode</th>
+                    <th scope="col">Current Status</th>
+                    <th scope="col">Final Result</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="applications.length === 0">
+                    <td colspan="7" class="text-center text-muted py-4">
+                      You have not applied to any drives yet.
+                    </td>
+                  </tr>
+                  <tr v-for="app in applications" :key="app.id">
+                    <td>{{ formatDate(app.applied_date) }}</td>
+                    <td>{{ app.company_name }}</td>
+                    <td>{{ app.job_title }}</td>
+                    <td>{{ formatInterviewDate(app.interview_date) }}</td>
+                    <td>{{ formatInterviewField(app.interview_mode) }}</td>
+                    <td>
+                      <span class="badge" :class="statusBadgeClass(app.status)">
+                        {{ app.status }}
+                      </span>
+                    </td>
+                    <td>
+                      <span
+                        class="badge"
+                        :class="finalResultBadgeClass(app.final_result)"
+                      >
+                        {{ app.final_result || "Pending" }}
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </main>
@@ -205,9 +296,7 @@ export default {
   border-radius: 0.25rem;
 }
 
-/* Bootstrap doesn't include an orange badge by default */
 .bg-orange {
   background-color: #fd7e14;
 }
 </style>
-

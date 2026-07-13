@@ -151,6 +151,9 @@ export default {
             <router-link class="nav-link" to="/admin">Dashboard</router-link>
           </li>
           <li class="nav-item">
+            <router-link class="nav-link" to="/admin/students">Students</router-link>
+          </li>
+          <li class="nav-item">
             <router-link class="nav-link" to="/admin/companies">
               Companies
             </router-link>
@@ -159,6 +162,14 @@ export default {
             <router-link class="nav-link active" to="/admin/drives">
               Placement Drives
             </router-link>
+          </li>
+          <li class="nav-item">
+            <router-link class="nav-link" to="/admin/applications">
+              Applications
+            </router-link>
+          </li>
+          <li class="nav-item">
+            <router-link class="nav-link" to="/admin/profile">Profile</router-link>
           </li>
         </ul>
       </aside>

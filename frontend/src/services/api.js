@@ -323,8 +323,8 @@ export function saveBlobDownload(response, filename) {
 
 // ---------- Admin approval APIs (Stage 4.2) ----------
 
-export async function fetchCompanies() {
-  const response = await apiClient.get("/admin/companies");
+export async function fetchCompanies(params = {}) {
+  const response = await apiClient.get("/admin/companies", { params });
   return response.data;
 }
 
@@ -338,8 +338,63 @@ export async function rejectCompany(companyId) {
   return response.data;
 }
 
+export async function blacklistCompany(companyId) {
+  const response = await apiClient.put(`/admin/company/${companyId}/blacklist`);
+  return response.data;
+}
+
+export async function unblacklistCompany(companyId) {
+  const response = await apiClient.put(`/admin/company/${companyId}/unblacklist`);
+  return response.data;
+}
+
+export async function fetchStudents(params = {}) {
+  const response = await apiClient.get("/admin/students", { params });
+  return response.data;
+}
+
+export async function blacklistStudent(studentId) {
+  const response = await apiClient.put(`/admin/student/${studentId}/blacklist`);
+  return response.data;
+}
+
+export async function unblacklistStudent(studentId) {
+  const response = await apiClient.put(`/admin/student/${studentId}/unblacklist`);
+  return response.data;
+}
+
+export async function getAdminProfile() {
+  const response = await apiClient.get("/admin/profile");
+  return response.data;
+}
+
+export async function updateAdminProfile(profileData) {
+  const response = await apiClient.put("/admin/profile", profileData);
+  return response.data;
+}
+
+export async function getCompanyProfile() {
+  const response = await apiClient.get("/company/profile");
+  return response.data;
+}
+
+export async function updateCompanyProfile(profileData) {
+  const response = await apiClient.put("/company/profile", profileData);
+  return response.data;
+}
+
 export async function fetchDrives() {
   const response = await apiClient.get("/admin/drives");
+  return response.data;
+}
+
+/**
+ * Fetch all applications for admin review.
+ * GET /admin/applications
+ * Optional filters: search/q, status, company, student, drive
+ */
+export async function fetchAdminApplications(params = {}) {
+  const response = await apiClient.get("/admin/applications", { params });
   return response.data;
 }
 

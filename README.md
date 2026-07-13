@@ -1,123 +1,377 @@
 # Placement Portal Application
 
-A web application for managing campus placements. Built as part of the IIT Madras BS Degree App Dev 2 project.
+A full-stack campus placement management system built for the IIT Madras BS Degree **Modern Application Development II (MAD-II)** project.
+
+Admins approve companies and drives, manage blacklists, and receive monthly reports. Companies create placement drives and manage applicants. Students browse eligible drives, apply, and track application status.
+
+---
+
+## Project Overview
+
+| Role | Capabilities |
+|------|----------------|
+| **Admin** | Dashboard stats, approve/reject companies & drives, blacklist/activate students & companies, profile, monthly email report |
+| **Company** | Profile, create/edit/close drives, review applicants, schedule interviews, CSV export |
+| **Student** | Profile + resume, browse/search drives, apply, track applications, CSV export |
+
+---
 
 ## Tech Stack
 
 ### Backend
 - **Flask** – Python web framework
-- **Flask-SQLAlchemy** – Database ORM
+- **Flask-SQLAlchemy** – ORM
 - **Flask-Migrate** – Database migrations
-- **Flask-CORS** – Cross-origin requests (frontend ↔ backend)
-- **Flask-JWT-Extended** – JWT authentication (for later)
+- **Flask-CORS** – Frontend ↔ backend CORS
+- **Flask-JWT-Extended** – JWT authentication
+- **Flask-Caching** – Redis response caching
+- **Flask-Mail** – Email via MailHog (local SMTP for reminders + monthly report)
+- **Celery** – Background tasks (reminders, reports, CSV export)
+- **Redis** – Cache + Celery broker/result backend
 - **SQLite** – Database
-- **Redis** – Caching / message broker (for later)
-- **Celery** – Background tasks (for later)
 
 ### Frontend
-- **Vue 3** – JavaScript framework
-- **Vite** – Build tool and dev server
-- **Vue Router** – Page navigation
-- **Axios** – HTTP requests to backend
+- **Vue 3** – SPA framework
+- **Vite** – Dev server & build
+- **Vue Router** – Client-side routing
+- **Axios** – HTTP client
 - **Bootstrap 5** – UI styling
+
+---
 
 ## Folder Structure
 
 ```
 placement_portal/
 ├── backend/
-│   ├── app.py              # Flask app entry point
-│   ├── config.py           # Configuration settings
-│   ├── extensions.py       # Flask extensions (db, cors, jwt, etc.)
-│   ├── requirements.txt    # Python dependencies
-│   ├── .env.example        # Example environment variables
-│   ├── models/             # Database models (later)
-│   ├── routes/             # API routes (later)
-│   ├── services/           # Business logic (later)
-│   ├── utils/              # Helper functions (later)
-│   ├── tasks/              # Celery tasks (later)
-│   ├── templates/          # HTML templates (if needed)
-│   └── static/             # Static files (if needed)
+│   ├── app.py                 # Flask entry point, default admin, schema helpers
+│   ├── config.py              # Env-based configuration
+│   ├── extensions.py          # db, migrate, cors, jwt, cache, mail
+│   ├── decorators.py          # admin/student/company JWT role guards
+│   ├── cache_helpers.py       # Redis cache keys & invalidation
+│   ├── celery_app.py          # Celery app + Beat schedule
+│   ├── celery_worker.py       # Worker entry helper
+│   ├── tasks.py               # Celery tasks (reminders, report, CSV, hello)
+│   ├── email_helper.py        # Mail send helpers
+│   ├── requirements.txt
+│   ├── .env.example
+│   ├── models/                # User, Student, Company, PlacementDrive, Application
+│   ├── routes/                # auth, admin, company, student, test_routes
+│   ├── services/              # report_service, export_service
+│   ├── uploads/resumes/       # Student PDF resumes
+│   └── exports/               # Generated CSV files
 ├── frontend/
 │   ├── src/
-│   │   ├── assets/         # Images, icons
-│   │   ├── components/     # Reusable Vue components (later)
-│   │   ├── views/          # Page components (Home.vue)
-│   │   ├── router/         # Vue Router setup
-│   │   └── services/       # API calls (Axios)
-│   └── public/             # Public static files
+│   │   ├── components/        # Navbar
+│   │   ├── views/             # Role dashboards & pages
+│   │   ├── router/            # Vue Router + guards
+│   │   └── services/api.js    # Axios API helpers
+│   ├── package.json
+│   └── vite.config.js
 ├── README.md
 └── .gitignore
 ```
 
-## How to Run the Backend
+---
 
-1. Open a terminal and go to the backend folder:
+## Installation
 
+### Prerequisites
+- Python 3.10+
+- Node.js 18+
+- Redis (local, default port `6379`)
+- MailHog (local SMTP on port `1025`, UI on `8025`) — no real email account needed
+
+---
+
+## Backend Setup
+
+```bash
+cd backend
+
+# Windows
+python -m venv venv
+venv\Scripts\activate
+
+# macOS / Linux
+python3 -m venv venv
+source venv/bin/activate
+
+pip install -r requirements.txt
+copy .env.example .env   # Windows
+# cp .env.example .env   # macOS / Linux
+```
+
+Edit `.env` for JWT secret, Redis URL, and MailHog settings (defaults work for local demos).
+
+Start Flask:
+
+```bash
+python app.py
+```
+
+Backend: http://localhost:5000/  
+Expected: `{"message": "Placement Portal Backend Running"}`
+
+On first start the app creates SQLite tables and a default admin user.
+
+---
+
+## Frontend Setup
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend: http://localhost:5173/
+
+Production build:
+
+```bash
+npm run build
+```
+
+---
+
+## Redis
+
+Redis is required for:
+- Flask-Caching (dashboard / drive list caching)
+- Celery broker and result backend
+
+Start Redis (examples):
+
+```bash
+# Windows (if installed as a service or via Memurai/WSL)
+redis-server
+
+# Docker
+docker run -d -p 6379:6379 redis:7
+```
+
+Default URL in `.env`: `REDIS_URL=redis://localhost:6379/0`
+
+---
+
+## Celery Worker
+
+From the `backend` folder with the venv active and Redis running:
+
+```bash
+# Windows
+celery -A celery_app.celery worker --loglevel=info --pool=solo
+
+# macOS / Linux
+celery -A celery_app.celery worker --loglevel=info
+```
+
+Handles: daily reminders, monthly report, CSV exports, `/test-celery` demo task.
+
+---
+
+## Celery Beat
+
+Schedules periodic jobs (daily reminders + monthly report):
+
+```bash
+celery -A celery_app.celery beat --loglevel=info
+```
+
+- Daily reminders: 9:00 AM Asia/Kolkata (or every minute if `CELERY_BEAT_TEST_MODE=true`)
+- Monthly report: 1st of each month at 09:00 Asia/Kolkata
+
+Admin can also trigger manually:
+- `POST /admin/test-reminder`
+- `POST /admin/test-monthly-report`
+
+---
+
+## Running MailHog
+
+All project emails (daily reminders, interview reminders, monthly HTML reports) are sent through **MailHog**, a local SMTP catcher. **No real email account is required.**
+
+### Start MailHog
+
+```bash
+# Docker (recommended)
+docker run -d --name mailhog -p 1025:1025 -p 8025:8025 mailhog/mailhog
+
+# Or download a binary from https://github.com/mailhog/MailHog/releases
+```
+
+### MailHog UI
+
+Open http://localhost:8025 to view captured emails (HTML formatting is preserved).
+
+### SMTP
+
+| Setting | Value |
+|---------|-------|
+| Host | `localhost` |
+| Port | `1025` |
+| TLS / SSL | Off |
+| Auth | None |
+
+Configured in `.env` (see `.env.example`):
+
+```
+MAIL_SERVER=localhost
+MAIL_PORT=1025
+MAIL_USE_TLS=False
+MAIL_USE_SSL=False
+MAIL_USERNAME=
+MAIL_PASSWORD=
+MAIL_DEFAULT_SENDER=placement-portal@localhost
+MAIL_SUPPRESS_SEND=false
+```
+
+Keep `MAIL_SUPPRESS_SEND=false` so emails appear in MailHog. Trigger reminders/reports via Celery Beat or admin endpoints `POST /admin/test-reminder` and `POST /admin/test-monthly-report`.
+
+---
+
+## Demo Accounts
+
+| Role | Email | Password |
+|------|-------|----------|
+| Admin | `admin@placementportal.com` | `admin123` |
+
+Student and company accounts: register via the UI. Companies must be **Approved** by admin before login.
+
+---
+
+## Project Features
+
+- JWT role-based auth (admin / student / company)
+- Student registration, profile, resume upload, drive search & apply
+- Company registration (pending approval), profile, drive CRUD, applicant workflow, interviews
+- Admin dashboard, company/drive approval, student & company blacklist
+- Admin & company profile editing
+- Redis caching with invalidation on writes
+- Celery: interview reminders, **current-month** placement report email, async CSV export
+- Bootstrap UI with role-specific sidebars
+
+---
+
+## Architecture
+
+```
+Vue 3 (Vite)  --Axios/JWT-->  Flask REST API  -->  SQLite
+                                   |
+                    Redis (cache + Celery broker)
+                                   |
+                         Celery Worker / Beat
+                                   |
+                         MailHog (Flask-Mail → :1025)
+```
+
+1. Frontend stores JWT after login and sends `Authorization: Bearer <token>`.
+2. Role decorators protect `/admin/*`, `/student/*`, `/company/*`.
+3. Cache stores selected GET responses; mutations invalidate related keys.
+4. Heavy / scheduled work runs in Celery workers.
+
+---
+
+## API Summary
+
+### Auth
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/register/student` | Student signup |
+| POST | `/register/company` | Company signup |
+| POST | `/login` | Get JWT |
+| POST | `/logout` | Logout |
+| GET | `/me` | Current user |
+
+### Admin (JWT admin)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/admin/dashboard` | Summary stats |
+| GET | `/admin/students` | List students |
+| PUT | `/admin/student/<id>/blacklist` | Blacklist student |
+| PUT | `/admin/student/<id>/unblacklist` | Activate student |
+| GET | `/admin/companies` | List companies |
+| PUT | `/admin/company/<id>/approve` | Approve company |
+| PUT | `/admin/company/<id>/reject` | Reject company |
+| PUT | `/admin/company/<id>/blacklist` | Blacklist company |
+| PUT | `/admin/company/<id>/unblacklist` | Activate company |
+| GET | `/admin/drives` | List drives |
+| PUT | `/admin/drives/<id>/approve` | Approve drive |
+| PUT | `/admin/drives/<id>/reject` | Reject drive |
+| GET/PUT | `/admin/profile` | Admin profile |
+| POST | `/admin/test-reminder` | Queue reminders |
+| POST | `/admin/test-monthly-report` | Queue monthly report |
+| GET | `/test-celery` | Celery hello task (admin only) |
+
+### Company (JWT company)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/company/dashboard` | Dashboard |
+| GET/PUT | `/company/profile` | Company profile |
+| GET/POST | `/company/drives` | List / create drives |
+| PUT | `/company/drives/<id>` | Update drive |
+| PATCH | `/company/drives/<id>/close` | Close drive |
+| GET | `/company/drives/<id>/applications` | Applicants |
+| PUT | `/company/application/<id>/status` | Update status |
+| PUT | `/company/application/<id>/interview` | Schedule interview |
+| GET | `/company/application/<id>/resume` | Download resume |
+| POST | `/company/export/<drive_id>` | Queue CSV export |
+| GET | `/company/export/download/<filename>` | Download CSV |
+
+### Student (JWT student)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/student/dashboard` | Dashboard |
+| GET/PUT | `/student/profile` | Profile |
+| POST | `/student/upload-resume` | Resume PDF |
+| GET | `/student/drives` | Browse/search approved drives |
+| POST | `/student/apply/<drive_id>` | Apply |
+| GET | `/student/applications` | My applications |
+| POST | `/student/export` | Queue CSV export |
+| GET | `/student/export/download/<filename>` | Download CSV |
+
+---
+
+## GitHub Run Instructions
+
+1. Clone the repository and open several terminals.
+2. **Redis:** start Redis on port 6379.
+3. **MailHog:** `docker run -d -p 1025:1025 -p 8025:8025 mailhog/mailhog` (UI: http://localhost:8025).
+4. **Backend:**
    ```bash
    cd backend
-   ```
-
-2. Create and activate a virtual environment:
-
-   ```bash
-   # Windows
    python -m venv venv
-   venv\Scripts\activate
-
-   # macOS / Linux
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
-
-3. Install Python dependencies:
-
-   ```bash
+   # activate venv
    pip install -r requirements.txt
-   ```
-
-4. Copy the example environment file and edit if needed:
-
-   ```bash
    copy .env.example .env
-   ```
-
-5. Start the Flask server:
-
-   ```bash
    python app.py
    ```
-
-6. Test the backend in a browser or with curl:
-
-   - URL: http://localhost:5000/
-   - Expected response: `{"message": "Placement Portal Backend Running"}`
-
-## How to Run the Frontend
-
-1. Open a **new** terminal and go to the frontend folder:
-
+5. **Celery worker:**
+   ```bash
+   cd backend
+   # activate venv
+   celery -A celery_app.celery worker --loglevel=info --pool=solo
+   ```
+6. **Celery beat (optional for scheduled jobs):**
+   ```bash
+   celery -A celery_app.celery beat --loglevel=info
+   ```
+7. **Frontend:**
    ```bash
    cd frontend
-   ```
-
-2. Install Node.js dependencies (only needed the first time):
-
-   ```bash
    npm install
-   ```
-
-3. Start the Vite development server:
-
-   ```bash
    npm run dev
    ```
+8. Open http://localhost:5173/ and login as admin (`admin@placementportal.com` / `admin123`).
 
-4. Open the URL shown in the terminal (usually http://localhost:5173/)
+---
 
-5. The home page will show **Placement Portal Application**, **Backend Status**, and a button to check the backend again.
+## Known Limitations
 
-## Notes
-
-- Run **both** backend and frontend for the status check to show "Online".
-- Authentication, models, and APIs will be added in later milestones.
+- SQLite is used for local/demo deployment (not multi-writer production scale).
+- JWT logout is client-side only (no server token blacklist).
+- Monthly report “Selected this month” uses application date + current status (no separate status-change timestamp).
+- Company “approved this month” is approximated via registration month of approved companies (no separate `approved_at` column).
+- Emails are captured by MailHog locally (no external SMTP); start MailHog before triggering reminder/report jobs.
+- Resume uploads are stored on the local filesystem under `backend/uploads/resumes/`.
