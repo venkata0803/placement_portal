@@ -35,9 +35,27 @@ _STUDENT_DRIVES_VER = "ver:student_drives"
 _COMPANY_DASH_VER = "ver:company_dashboard"
 
 
+def _safe_cache_call(description, func, default=None):
+    """
+    Run a Redis cache operation without breaking the request.
+
+    Registration / login / writes already committed to SQLite before
+    invalidation. A Redis outage must not turn those into HTTP 500.
+    """
+    try:
+        return func()
+    except Exception as error:
+        logger.warning("[CACHE] %s failed (non-fatal): %s", description, error)
+        return default
+
+
 def _get_version(version_key):
     """Read a version counter from Redis (default 0)."""
-    return cache.get(version_key) or 0
+    return _safe_cache_call(
+        f"get {version_key}",
+        lambda: cache.get(version_key),
+        default=0,
+    ) or 0
 
 
 def _bump_version(version_key):
@@ -48,7 +66,10 @@ def _bump_version(version_key):
     """
     new_version = _get_version(version_key) + 1
     # timeout=0 means "keep forever" until we bump again
-    cache.set(version_key, new_version, timeout=0)
+    _safe_cache_call(
+        f"set {version_key}",
+        lambda: cache.set(version_key, new_version, timeout=0),
+    )
     return new_version
 
 
@@ -177,7 +198,8 @@ def with_cache_performance_log(endpoint_name, key_func):
 
 def invalidate_admin_dashboard():
     """Clear the shared admin dashboard cache."""
-    cache.delete(admin_dashboard_key())
+    key = admin_dashboard_key()
+    _safe_cache_call(f"delete {key}", lambda: cache.delete(key))
     logger.info("[CACHE INVALIDATE] admin_dashboard")
 
 
@@ -189,7 +211,7 @@ def invalidate_company_dashboard(user_id):
     """
     ver = _get_version(_COMPANY_DASH_VER)
     key = f"company_dashboard_{user_id}_v{ver}"
-    cache.delete(key)
+    _safe_cache_call(f"delete {key}", lambda: cache.delete(key))
     logger.info("[CACHE INVALIDATE] company_dashboard user_id=%s", user_id)
 
 
@@ -203,7 +225,7 @@ def invalidate_student_dashboard(user_id):
     """Clear one student's dashboard."""
     ver = _get_version(_STUDENT_DASH_VER)
     key = f"student_dashboard_{user_id}_v{ver}"
-    cache.delete(key)
+    _safe_cache_call(f"delete {key}", lambda: cache.delete(key))
     logger.info("[CACHE INVALIDATE] student_dashboard user_id=%s", user_id)
 
 

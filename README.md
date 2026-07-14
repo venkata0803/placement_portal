@@ -16,7 +16,7 @@ Admins approve companies and drives, manage blacklists, and receive monthly repo
 
 ---
 
-## Tech Stack
+## Technologies Used
 
 ### Backend
 - **Flask** – Python web framework
@@ -39,37 +39,33 @@ Admins approve companies and drives, manage blacklists, and receive monthly repo
 
 ---
 
-## Folder Structure
+## Project Structure
 
 ```
-placement_portal/
-├── backend/
-│   ├── app.py                 # Flask entry point, default admin, schema helpers
-│   ├── config.py              # Env-based configuration
-│   ├── extensions.py          # db, migrate, cors, jwt, cache, mail
-│   ├── decorators.py          # admin/student/company JWT role guards
-│   ├── cache_helpers.py       # Redis cache keys & invalidation
-│   ├── celery_app.py          # Celery app + Beat schedule
-│   ├── celery_worker.py       # Worker entry helper
-│   ├── tasks.py               # Celery tasks (reminders, report, CSV, hello)
-│   ├── email_helper.py        # Mail send helpers
-│   ├── requirements.txt
-│   ├── .env.example
-│   ├── models/                # User, Student, Company, PlacementDrive, Application
-│   ├── routes/                # auth, admin, company, student, test_routes
-│   ├── services/              # report_service, export_service
-│   ├── uploads/resumes/       # Student PDF resumes
-│   └── exports/               # Generated CSV files
-├── frontend/
+placement_portal_application_23f1000054/
+├── backend/                   # Flask API, models, Celery, Redis cache, Mail
+│   ├── app.py
+│   ├── config.py
+│   ├── extensions.py
+│   ├── celery_app.py
+│   ├── celery_worker.py
+│   ├── tasks.py
+│   ├── models/
+│   ├── routes/
+│   ├── services/
+│   ├── uploads/resumes/
+│   └── exports/
+├── frontend/                  # Vue 3 + Vite SPA
 │   ├── src/
-│   │   ├── components/        # Navbar
-│   │   ├── views/             # Role dashboards & pages
-│   │   ├── router/            # Vue Router + guards
-│   │   └── services/api.js    # Axios API helpers
 │   ├── package.json
+│   ├── package-lock.json
 │   └── vite.config.js
 ├── README.md
-└── .gitignore
+├── requirements.txt           # Python dependencies
+├── api.yaml                   # OpenAPI documentation
+├── Project_Report.pdf
+├── .gitignore
+└── .env.example               # Copy to backend/.env before running
 ```
 
 ---
@@ -87,28 +83,26 @@ placement_portal/
 ## Backend Setup
 
 ```bash
-cd backend
+# From project root
+python -m venv venv
 
 # Windows
-python -m venv venv
 venv\Scripts\activate
 
 # macOS / Linux
-python3 -m venv venv
-source venv/bin/activate
+# source venv/bin/activate
 
 pip install -r requirements.txt
-copy .env.example .env   # Windows
-# cp .env.example .env   # macOS / Linux
-```
 
-Edit `.env` for JWT secret, Redis URL, and MailHog settings (defaults work for local demos).
+# Copy env file into backend (Flask loads backend/.env)
+copy .env.example backend\.env   # Windows
+# cp .env.example backend/.env   # macOS / Linux
 
-Start Flask:
-
-```bash
+cd backend
 python app.py
 ```
+
+Edit `backend/.env` for JWT secret, Redis URL, and MailHog settings (defaults work for local demos).
 
 Backend: http://localhost:5000/  
 Expected: `{"message": "Placement Portal Backend Running"}`
@@ -160,11 +154,13 @@ Default URL in `.env`: `REDIS_URL=redis://localhost:6379/0`
 From the `backend` folder with the venv active and Redis running:
 
 ```bash
+cd backend
+
 # Windows
-celery -A celery_app.celery worker --loglevel=info --pool=solo
+python -m celery -A celery_worker:celery worker --loglevel=info --pool=solo
 
 # macOS / Linux
-celery -A celery_app.celery worker --loglevel=info
+python -m celery -A celery_worker:celery worker --loglevel=info
 ```
 
 Handles: daily reminders, monthly report, CSV exports, `/test-celery` demo task.
@@ -176,7 +172,8 @@ Handles: daily reminders, monthly report, CSV exports, `/test-celery` demo task.
 Schedules periodic jobs (daily reminders + monthly report):
 
 ```bash
-celery -A celery_app.celery beat --loglevel=info
+cd backend
+python -m celery -A celery_worker:celery beat --loglevel=info
 ```
 
 - Daily reminders: 9:00 AM Asia/Kolkata (or every minute if `CELERY_BEAT_TEST_MODE=true`)
@@ -188,7 +185,7 @@ Admin can also trigger manually:
 
 ---
 
-## Running MailHog
+## MailHog
 
 All project emails (daily reminders, interview reminders, monthly HTML reports) are sent through **MailHog**, a local SMTP catcher. **No real email account is required.**
 
@@ -214,7 +211,7 @@ Open http://localhost:8025 to view captured emails (HTML formatting is preserved
 | TLS / SSL | Off |
 | Auth | None |
 
-Configured in `.env` (see `.env.example`):
+Configured in `backend/.env` (see root `.env.example`):
 
 ```
 MAIL_SERVER=localhost
@@ -273,7 +270,7 @@ Vue 3 (Vite)  --Axios/JWT-->  Flask REST API  -->  SQLite
 
 ---
 
-## API Summary
+## API Information
 
 ### Auth
 | Method | Path | Description |
@@ -333,29 +330,30 @@ Vue 3 (Vite)  --Axios/JWT-->  Flask REST API  -->  SQLite
 
 ---
 
-## GitHub Run Instructions
+## Quick Start (Evaluator)
 
-1. Clone the repository and open several terminals.
+1. Extract the ZIP so you get a single folder `placement_portal_application_23f1000054/`.
 2. **Redis:** start Redis on port 6379.
 3. **MailHog:** `docker run -d -p 1025:1025 -p 8025:8025 mailhog/mailhog` (UI: http://localhost:8025).
 4. **Backend:**
    ```bash
-   cd backend
+   cd placement_portal_application_23f1000054
    python -m venv venv
    # activate venv
    pip install -r requirements.txt
-   copy .env.example .env
+   copy .env.example backend\.env
+   cd backend
    python app.py
    ```
 5. **Celery worker:**
    ```bash
    cd backend
-   # activate venv
-   celery -A celery_app.celery worker --loglevel=info --pool=solo
+   python -m celery -A celery_worker:celery worker --loglevel=info --pool=solo
    ```
 6. **Celery beat (optional for scheduled jobs):**
    ```bash
-   celery -A celery_app.celery beat --loglevel=info
+   cd backend
+   python -m celery -A celery_worker:celery beat --loglevel=info
    ```
 7. **Frontend:**
    ```bash

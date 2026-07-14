@@ -1,73 +1,60 @@
 <script setup>
 /**
- * Home.vue - Main page of the Placement Portal
+ * Home.vue - Landing page of the Placement Portal Application
  *
- * This page shows:
- * 1. Application title
- * 2. Backend connection status
- * 3. A button to check the backend again
+ * Displays a professional project introduction and technology stack overview.
  */
-
-import { ref, onMounted } from "vue";
-import { checkBackendStatus } from "../services/api.js";
-
-// Reactive variable to store the message from the backend
-const backendMessage = ref("Checking backend...");
-
-// Reactive variable to show if the backend is online or offline
-const isBackendOnline = ref(false);
-
-// Function to call the backend API and update the status
-async function fetchBackendStatus() {
-  backendMessage.value = "Checking backend...";
-  isBackendOnline.value = false;
-
-  try {
-    // Call our API service (defined in services/api.js)
-    const response = await checkBackendStatus();
-    backendMessage.value = response.message;
-    isBackendOnline.value = true;
-  } catch (error) {
-    // If the backend is not running, show an error message
-    backendMessage.value = "Backend is offline. Start the Flask server first.";
-    isBackendOnline.value = false;
-  }
-}
-
-// When the page loads, automatically check backend status
-onMounted(() => {
-  fetchBackendStatus();
-});
 </script>
 
 <template>
   <div class="container py-5">
-    <!-- Page title -->
-    <h1 class="text-center mb-4">Placement Portal Application</h1>
+    <div class="row justify-content-center">
+      <div class="col-12 col-md-10 col-lg-8">
+        <div class="card shadow-sm border-0">
+          <div class="card-body p-4 p-md-5">
+            <h1 class="card-title text-center mb-4 fs-2">
+              Placement Portal Application
+            </h1>
 
-    <!-- Backend status card -->
-    <div class="card mx-auto" style="max-width: 500px">
-      <div class="card-body text-center">
-        <h5 class="card-title">Backend Status</h5>
+            <p class="card-text text-secondary lh-lg mb-4">
+              The Placement Portal Application is a web-based platform that
+              streamlines campus recruitment by connecting students, companies,
+              and the institute placement cell. It enables company registration
+              and approval, placement drive management, student applications,
+              interview scheduling, and application tracking through a secure
+              role-based system. The application also includes Redis caching,
+              Celery background jobs, CSV exports, and automated email
+              notifications to improve performance and user experience.
+            </p>
 
-        <!-- Green badge if online, red if offline -->
-        <span
-          class="badge mb-3"
-          :class="isBackendOnline ? 'bg-success' : 'bg-danger'"
-        >
-          {{ isBackendOnline ? "Online" : "Offline" }}
-        </span>
-
-        <p class="card-text">{{ backendMessage }}</p>
-
-        <!-- Bootstrap button to re-check backend status -->
-        <button
-          type="button"
-          class="btn btn-primary"
-          @click="fetchBackendStatus"
-        >
-          Check Backend Again
-        </button>
+            <div class="bg-light rounded p-3 p-md-4 mt-2">
+              <h2 class="h6 text-uppercase text-muted mb-3">Built With</h2>
+              <ul class="list-unstyled mb-0 row g-2">
+                <li class="col-12 col-sm-6">
+                  <span class="text-primary me-1">•</span> Flask REST API
+                </li>
+                <li class="col-12 col-sm-6">
+                  <span class="text-primary me-1">•</span> Vue.js
+                </li>
+                <li class="col-12 col-sm-6">
+                  <span class="text-primary me-1">•</span> SQLite
+                </li>
+                <li class="col-12 col-sm-6">
+                  <span class="text-primary me-1">•</span> Redis Cache
+                </li>
+                <li class="col-12 col-sm-6">
+                  <span class="text-primary me-1">•</span> Celery
+                </li>
+                <li class="col-12 col-sm-6">
+                  <span class="text-primary me-1">•</span> JWT Authentication
+                </li>
+                <li class="col-12 col-sm-6">
+                  <span class="text-primary me-1">•</span> Bootstrap 5
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
